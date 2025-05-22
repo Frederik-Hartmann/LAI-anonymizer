@@ -464,8 +464,7 @@ class AnonymizerModel:
                     phi_patient_name=phi.patient_name,
                     date_offset=study.anon_date_delta,
                     phi_study_date=study.study_date,
-                    # TODO: Handle missing accession numbers
-                    anon_accession=self._acc_no_lookup[study.accession_number],
+                    anon_accession=self._acc_no_lookup.get(study.accession_number, ""),
                     phi_accession=study.accession_number,
                     anon_study_uid=self._uid_lookup[study.study_uid],
                     phi_study_uid=study.study_uid,
