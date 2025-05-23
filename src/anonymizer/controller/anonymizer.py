@@ -32,6 +32,8 @@ import torch
 from easyocr import Reader
 from pydicom import Dataset, Sequence, dcmread
 from pydicom.errors import InvalidDicomError
+from pydicom.datadict import dictionary_VR, add_private_dict_entry
+from pydicom.tag import Tag
 
 from anonymizer.controller.remove_pixel_phi import remove_pixel_phi
 from anonymizer.model.anonymizer import AnonymizerModel
@@ -578,8 +580,81 @@ class AnonymizerController:
             logger.debug(f"round_age: Age:{value} Width:{width}")
             dataset[tag].value = self._round_age(value, width)
             logger.debug(f"round_age: Result:{dataset[tag].value}")
+        elif "@param" in operation:
+            pass
+        elif "@modifydate" in operation:
+            pass
+    
+    @staticmethod
+    def _empty_value_for_vr(vr: str) -> object:
+        """
+        Returns an appropriate empty value based on the Value Representation.
 
+        Args:
+            vr (str): DICOM Value Representation (e.g., 'LO', 'SQ').
 
+        Returns:
+            object: An appropriate empty value for that VR.
+
+        Notes:
+            - VR to datatype are taken from https://pydicom.github.io/pydicom/dev/guides/element_value_types.html (last access May 23rd 2025)
+            - if VR is unknown falls back to empty strings
+        """
+        text_vrs = {'AE', 'AS', 'CS', 'DA', 'DS', 'DT', 'IS', 'LO', 'LT', 'PN', 'SH', 'ST', 'TM', 'UC', 'UI', 'UR', 'UT'}
+        numeric_vrs = {'DS', 'IS', 'FL', 'FD', 'SL', 'SS', 'UL', 'US'}
+        binary_vrs = {'OB', 'OD', 'OF', 'OL', 'OV', 'OW', 'UN'}
+        sequence_vrs = {'SQ'}
+
+        if vr in text_vrs:
+            return ""
+        if vr in numeric_vrs:
+            return None
+        if vr in binary_vrs:
+            return b""
+        if vr in sequence_vrs:
+            return Sequence()
+
+        # fallback return empty string
+        return ""
+
+    def _add_always_tags(self, ds: Dataset) -> str | None:
+        """
+        Ensures all tags in `self.model._tag_always` are present in the dataset.
+        Adds them with an appropriate empty value if missing or empty.
+
+        Args:
+            ds (Dataset): The DICOM dataset.
+
+        Returns:
+            str | None: Error message if any tag cannot be added, otherwise None.
+        """
+        for tag in self.model._tag_always:
+            tag = Tag(tag)
+            if tag in ds:
+                continue
+            
+            if not tag.is_private:
+                try:
+                    vr = dictionary_VR(tag)
+                except KeyError as key_error:
+                    vr = "LO"  
+                    logger.warning(f"pydicom could not find value representation: {key_error} \
+                                    defaulting to long string.")
+                empty_value = self._empty_value_for_vr(vr)
+                ds.add_new(tag, vr, empty_value)
+            else:
+                logger.warning(f"Value representation search for private tags is not supported. Defaulting to long string for tag {tag}.")
+                creator_tag = Tag(tag.group, 0x0010)
+                creator_name = "Empty Element Creator for Anonymization"
+                if creator_tag not in ds:
+                    print("adding tag")
+                    ds.add_new(creator_tag, "LO", creator_name)
+                add_private_dict_entry(creator_name, tag, "LO", "ProjectName")
+                private_block = ds.private_block(tag.group, creator_name, create=True)
+                private_block.add_new(tag.element & 0x00FF, "LO", "This is some text")
+                ds.save_as("test.dcm")
+
+        return None
 
 
     def anonymize(self, source: DICOMNode | str, ds: Dataset) -> str | None:
@@ -629,6 +704,7 @@ class AnonymizerController:
             # To minimize memory/computation overhead DO NOT MAKE COPY of source dataset
             # Anonymize dataset (overwrite phi dataset) (prevents dataset copy)
             ds.remove_private_tags()  # remove all private elements (odd group number)
+            self._add_always_tags(ds)
             ds.walk(self._anonymize_element)  # recursive by default, recurses into embedded dataset sequences
             # All elements now anonymized according to script, finally anonymizer PatientID and PatientName elements:
             anon_ptid = self.model.get_anon_patient_id(ds.get("PatientID", ""))  # created by capture_phi

@@ -2,6 +2,7 @@
 # use pytest from terminal to show full logging output
 
 import os
+import tempfile
 from copy import deepcopy
 from pathlib import Path
 from queue import Queue
@@ -9,10 +10,11 @@ from time import sleep
 
 from pydicom import dcmread
 from pydicom.data import get_testdata_file
-from pydicom.dataset import Dataset
+from pydicom.dataset import Dataset, FileDataset
+from pydicom.tag import Tag
 
 from anonymizer.controller.anonymizer import AnonymizerController, QuarantineDirectories
-from anonymizer.controller.project import ProjectController
+from anonymizer.controller.project import ProjectController, ProjectModel
 from tests.controller.dicom_test_files import (
     cr1_filename,
     ct_small_filename,
@@ -408,6 +410,35 @@ def test_anonymize_storage_error(temp_dir: str, controller: ProjectController):
     assert qpath.exists()
     filename: Path = anonymizer.local_storage_path(qpath, cr1)
     assert filename.exists()
+
+def test_always_tags_new_private_tag(temp_dir):
+    script_path = Path(temp_dir) / "custom.script"
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(
+        """<script>
+<e en="T" t="00131010" n="ProjectName">@always()@param(@PROJECTNAME)</e>
+<e en="T" t="00080016" n="SOPClassUID">@hashuid</e>
+<e en="T" t="00080018" n="SOPInstanceUID">@hashuid</e>
+<e en="T" t="0020000D" n="StudyInstanceUID">@hashuid</e>
+<e en="T" t="0020000E" n="SeriesInstanceUID">@hashuid</e>
+</script>"""
+    )
+    model = ProjectModel(anonymizer_script_path=script_path, storage_dir=Path(temp_dir, LocalSCU.aet))
+    controller = ProjectController(model)
+
+    # test if project is added
+    cr1 : FileDataset= get_testdata_file(cr1_filename, read=True)
+    project_name_tag = Tag(0x0013, 0x1010)  # Replace with actual group and element
+    if project_name_tag in cr1:
+        del cr1[project_name_tag]
+    test_filename = "test.dcm"
+    test_dcm_file_path = Path(temp_dir, test_filename)
+    cr1.save_as(test_dcm_file_path)
+
+    error_msg, ds = controller.anonymizer.anonymize_file(test_dcm_file_path)
+    controller.anonymizer.stop()
+
+    assert ds[0x00131010] # check that project name exists now
 
 
 # TODO: Transcoding tests here

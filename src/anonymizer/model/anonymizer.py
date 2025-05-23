@@ -147,6 +147,7 @@ class AnonymizerModel:
             _series (int): The number of series.
             _instances (int): The number of instances.
             _quarantined (int): The number of instances quarantined. [V2]
+            _tag_always (list): A list of DICOM tags that should always be present according script (@always). Will be created if not present.
         """
         self._version = AnonymizerModel.MODEL_VERSION
         self._site_id = site_id
@@ -162,6 +163,7 @@ class AnonymizerModel:
         self._acc_no_lookup: OrderedDict[str, str] = OrderedDict()
         self._phi_lookup: Dict[str, PHI] = {}
         self._tag_keep: Dict[str, str] = {}  # {dicom tag : anonymizer operation}
+        self._tag_always: List[str] = []
 
         self._patients = 0
         self._studies = 0
@@ -225,6 +227,9 @@ class AnonymizerModel:
                 tag = str(e.attrib.get("t"))
                 operation = str(e.text) if e.text is not None else ""
                 if "@remove" not in operation:
+                    if "@always()" in operation:
+                        self._tag_always.append(tag)
+                        operation = operation.replace("@always()", "") # @always can be paired with another operation
                     self._tag_keep[tag] = operation
 
             # Handle:
