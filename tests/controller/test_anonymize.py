@@ -79,6 +79,80 @@ def test_valid_date_hash_patient_id_range(controller):
         assert anon.valid_date(hdate)
 
 
+def test_valid_time(controller):
+    anon = controller.anonymizer
+    # valid hour only formats
+    assert anon.valid_time("00") == True
+    assert anon.valid_time("11") == True
+    assert anon.valid_time("23") == True
+
+    # invalid hour only format 
+    assert anon.valid_time("24") == False
+    assert anon.valid_time("2") == False
+
+    # valid hour, minute format
+    assert anon.valid_time("0000") == True
+    assert anon.valid_time("0023") == True
+    assert anon.valid_time("0059") == True
+
+    # invalid hour, minute format
+    assert anon.valid_time("0060") == False
+    assert anon.valid_time("0099") == False
+    assert anon.valid_time("005") == False
+    assert anon.valid_time("00.00") == False
+    assert anon.valid_time("00,00") == False
+
+    # valid hour, minute, second formats
+    assert anon.valid_time("000000") == True
+    assert anon.valid_time("000023") == True
+    assert anon.valid_time("000059") == True
+    assert anon.valid_time("000060") == True # leap second
+
+    # invalid hour, minute, second formats
+    assert anon.valid_time("000061") == False
+    assert anon.valid_time("00005") == False
+    assert anon.valid_time("000099") == False
+    assert anon.valid_time("00.00.00") == False
+    assert anon.valid_time("00,00,00") == False
+
+    # valid hour, minute, second, fraction formats
+    assert anon.valid_time("000000.000000") == True
+    assert anon.valid_time("000000.123456") == True
+    assert anon.valid_time("000000.456789") == True
+    assert anon.valid_time("000000.999999") == True
+    assert anon.valid_time("000000.00000") == True
+    assert anon.valid_time("000000.0000") == True
+    assert anon.valid_time("000000.000") == True
+    assert anon.valid_time("000000.00") == True
+    assert anon.valid_time("000000.0") == True
+
+    # invalid hour, minute, second, fraction formats
+    assert anon.valid_time("000000.0000000") == False
+    assert anon.valid_time("000000.") == False
+    assert anon.valid_time("000000,000000") == False
+
+    # leading, embedded and trailing spaces
+    assert anon.valid_time(" 000000.000000") == False
+    assert anon.valid_time("00 0000.000000") == False
+    assert anon.valid_time("000000.000000 ") == True
+
+
+def test_valid_time_hash_patient_id_range(controller):
+    anon = controller.anonymizer
+    for i in range(100):
+        _, htime = anon._hash_time("123456.123456", str(i))
+        assert anon.valid_time(htime)
+
+def test_hash_time_order_preserving(controller):
+    # within bounds only (at least 2 seconds or 2 fractional seconds apart)
+    anon = controller.anonymizer
+    assert float(anon._hash_time("000000", "Patient-ID")[1]) < float(anon._hash_time("000002", "Patient-ID")[1]) # min 2 second apart
+    assert float(anon._hash_time("000000", "Patient-ID")[1]) < float(anon._hash_time("000000.000001", "Patient-ID")[1]) # or frac precision
+    assert float(anon._hash_time("180000", "Patient-ID")[1]) < float(anon._hash_time("230000", "Patient-ID")[1]) # 23:00:00 has midnight rollover, 18:00:00 not.
+    assert float(anon._hash_time("000000.12", "Patient-ID")[1]) < float(anon._hash_time("000000.24", "Patient-ID")[1]) 
+    assert float(anon._hash_time("000000.000000", "Patient-ID")[1]) < float(anon._hash_time("000000.000002", "Patient-ID")[1])
+
+
 def test_anonymize_dataset_without_PatientID(temp_dir: str, controller):
     anonymizer: AnonymizerController = controller.anonymizer
     ds = get_testdata_file(cr1_filename, read=True)

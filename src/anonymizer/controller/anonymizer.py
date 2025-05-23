@@ -21,6 +21,7 @@ import pickle
 import re
 import threading
 import time
+from typing import Tuple
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
@@ -71,7 +72,8 @@ class AnonymizerController:
         ("113108", "Retain Patient Characteristics Option"),
     ]
     PRIVATE_BLOCK_NAME = "RSNA"
-    DEFAULT_ANON_DATE = "20000101"  # if source date is invalid or before 19000101
+    DEFAULT_ANON_DATE = "20000101"  # if source date is invalid or before 
+    DEFAULT_ANON_TIME = "000000" # if source time is invalid
 
     NUMBER_OF_DATASET_WORKER_THREADS = 2
     WORKER_THREAD_SLEEP_SECS = 0.075  # for UX responsiveness
@@ -380,6 +382,111 @@ class AnonymizerController:
 
         return days_to_increment, formatted_date
 
+
+    def _hash_time(self, time_str: str, patient_id: str) -> Tuple[float, str]:
+        """
+        Anonymize a DICOM conform time string by adding a patient-specific offset
+        and then scaling back into a 24h range, preserving order. The difference is scaled by a factor of 0.5.
+        e.g. if two scans were 4 minutes apart before anonymization, after anon they will be 2 minutes apart.
+        This is done to avoid midnight rollover. The order can only be preserved if times are
+        at least 2 seconds apart or have fractional precision.
+
+        Args:
+            time_str (str): DICOM time (e.g. "121314.123", "0759", "235959.999999").
+            patient_id (str): Unique patient identifier.
+
+        Returns:
+            Tuple[float, str]:
+            - offset_seconds applied (float)
+            - anonymized DICOM time string (only order preserved, difference scaled)
+            """
+        if not self.valid_time(time_str) or not patient_id:
+            return 0.0, self.DEFAULT_ANON_TIME
+
+        # Parse HH, MM, SS, fractional
+        base, *frac_part = time_str.split(".", 1)
+        hh = int(base[0:2])
+        mm = int(base[2:4]) if len(base) >= 4 else 0
+        ss = int(base[4:6]) if len(base) >= 6 else 0
+        ss = ss if ss != 60 else 59 # handle leap second
+        frac_digits = frac_part[0] if frac_part else ""
+
+        original_frac_precision = len(frac_digits)
+        frac_full = frac_digits.ljust(6, "0")
+        frac = int(frac_full) / 1_000_000
+
+        total_seconds = hh * 3600 + mm * 60 + ss + frac
+
+        # hash-based offset in [0, 86400)
+        hash_bytes = hashlib.md5(patient_id.encode()).digest()[:8]
+        hash_int = int.from_bytes(hash_bytes, byteorder="big")
+        offset_seconds = (hash_int % (86400 * 10**6)) / 10**6
+        summed = total_seconds + offset_seconds # range [0, 172800)
+
+        # Map back into [0, 86400), preservers order, scales by 0.5
+        anon_seconds = summed / 2.0
+
+        # Reconstruct HH, MM, SS, frac
+        hh = int(anon_seconds // 3600)
+        mm = int((anon_seconds % 3600) // 60)
+        ss = int(anon_seconds % 60)
+        anon_frac = int(round((anon_seconds % 1) * 1_000_000))
+
+        if original_frac_precision:
+            frac_str = f"{anon_frac:06}"[:original_frac_precision]
+            anon_time = f"{hh:02}{mm:02}{ss:02}.{frac_str}"
+        else:
+            anon_time = f"{hh:02}{mm:02}{ss:02}"
+
+        return offset_seconds, anon_time
+
+    @staticmethod
+    def valid_time(time_str: str) -> bool:
+        """
+        Validates if time_str is according to DICOM Standards:
+        https://dicom.nema.org/dicom/2013/output/chtml/part05/sect_6.2.html (last access May 22nd 2025)
+
+        Args:
+            time_str (str): The time string to validate, expected in the format
+                            HHMMSS.FFFFFF with optional truncated components and optional trailing spaces.
+
+        Returns:
+            bool: True if valid according to DICOM Value rules, False otherwise.
+        """
+        if not time_str or not isinstance(time_str, str):
+            return False
+
+        time_str = time_str.rstrip()  # Remove trailing spaces only
+
+        # Regular expression to match DICOM time format
+        # Groups: HH, MM (optional), SS (optional), .FFFFFF (optional fractional)
+        pattern = (
+            r"^(?P<hour>[0-2][0-9])"                       # HH
+            r"(?P<minute>[0-5][0-9])?"                     # MM
+            r"(?P<second>[0-5][0-9]|60)?"                  # SS (60 allowed for leap second)
+            r"(?P<fraction>\.[0-9]{1,6})?$"                # Optional fractional seconds
+        )
+
+        match = re.fullmatch(pattern, time_str)
+        if not match:
+            return False
+
+        hour = int(match.group("hour"))
+
+        if hour > 23:
+            return False  # 24:00 is invalid in DICOM
+
+        # Component dependencies: if MM missing, SS and fraction must also be missing
+        if match.group("minute") is None and (match.group("second") or match.group("fraction")):
+            return False
+
+        if match.group("second") is None and match.group("fraction"):
+            return False
+
+        return True
+   
+
+
     def extract_first_digit(self, s: str) -> str | None:
         """
         Extracts the first digit from a given string.
@@ -453,6 +560,9 @@ class AnonymizerController:
         elif "@hashdate" in operation:
             _, anon_date = self._hash_date(data_element.value, dataset.get("PatientID", ""))
             dataset[tag].value = anon_date
+        elif "@hashtime" in operation:
+            _, anon_time = self._hash_time(data_element.value, dataset.get("PatientID", ""))
+            dataset[tag].value = anon_time
         elif "@round" in operation:
             # TODO: operand is named round but it is age format specific, should be renamed round_age
             # create separate operand for round that can be used for other numeric values
@@ -468,6 +578,9 @@ class AnonymizerController:
             logger.debug(f"round_age: Age:{value} Width:{width}")
             dataset[tag].value = self._round_age(value, width)
             logger.debug(f"round_age: Result:{dataset[tag].value}")
+
+
+
 
     def anonymize(self, source: DICOMNode | str, ds: Dataset) -> str | None:
         """
