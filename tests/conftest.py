@@ -2,6 +2,7 @@
 import os
 import shutil
 import tempfile
+import logging
 from logging import INFO, WARNING
 
 # Add the src directory to sys.path dynamically
@@ -42,6 +43,13 @@ def temp_dir() -> Generator[str, Any, None]:
 
     # Remove the temporary directory after the test is done
     shutil.rmtree(temp_path)
+
+    # Remove all handlers from root logger to prevent duplicate logs in next test
+    root_logger = logging.getLogger()
+    handlers = root_logger.handlers[:]
+    for handler in handlers:
+        handler.close()
+        root_logger.removeHandler(handler)
 
 
 @pytest.fixture
