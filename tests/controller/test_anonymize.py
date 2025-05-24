@@ -480,4 +480,32 @@ def test_always_tags_new_tag(temp_dir):
     # test if tag "Study Description" exists now
     assert ds[0x00081030] # check that study description exists now
 
+
+def test_always_tag_keep_tag_combination(temp_dir):
+    # create custom script and init anonymizer
+    script_path = Path(temp_dir) / "custom.script"
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(
+        """<script>
+<e en="T" t="00081030" n="StudyDescription">@always()@keep()</e>
+<e en="T" t="00080016" n="SOPClassUID">@hashuid</e>
+<e en="T" t="00080018" n="SOPInstanceUID">@hashuid</e>
+<e en="T" t="0020000D" n="StudyInstanceUID">@hashuid</e>
+<e en="T" t="0020000E" n="SeriesInstanceUID">@hashuid</e>
+</script>"""
+    )
+    model = ProjectModel(anonymizer_script_path=script_path, storage_dir=Path(temp_dir, LocalSCU.aet))
+    controller = ProjectController(model)
+
+    # run anonymizer
+    cr1 : FileDataset= get_testdata_file(cr1_filename, read=True)
+    test_filename = "test.dcm"
+    test_dcm_file_path = Path(temp_dir, test_filename)
+    cr1.save_as(test_dcm_file_path)
+    error_msg, ds = controller.anonymizer.anonymize_file(test_dcm_file_path)
+    controller.anonymizer.stop()
+
+    # test if tag "Study Description" exists now
+    assert ds[0x00081030].value == "XR C Spine Comp Min 4 Views" # check that study description is the same
+
 # TODO: Transcoding tests here
