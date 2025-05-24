@@ -2,7 +2,7 @@
 # use pytest from terminal to show full logging output
 
 import os
-import tempfile
+import pytest
 from copy import deepcopy
 from pathlib import Path
 from queue import Queue
@@ -412,11 +412,12 @@ def test_anonymize_storage_error(temp_dir: str, controller: ProjectController):
     assert filename.exists()
 
 def test_always_tags_new_private_tag(temp_dir):
+    # create custom script and init anonymizer
     script_path = Path(temp_dir) / "custom.script"
     with open(script_path, "w", encoding="utf-8") as f:
         f.write(
         """<script>
-<e en="T" t="00131010" n="ProjectName">@always()@param(@PROJECTNAME)</e>
+<e en="T" t="00131010" n="ProjectName">@always()@keep()</e>
 <e en="T" t="00080016" n="SOPClassUID">@hashuid</e>
 <e en="T" t="00080018" n="SOPInstanceUID">@hashuid</e>
 <e en="T" t="0020000D" n="StudyInstanceUID">@hashuid</e>
@@ -426,19 +427,57 @@ def test_always_tags_new_private_tag(temp_dir):
     model = ProjectModel(anonymizer_script_path=script_path, storage_dir=Path(temp_dir, LocalSCU.aet))
     controller = ProjectController(model)
 
-    # test if project is added
+    # remove private tag "ProjectName" if existing
     cr1 : FileDataset= get_testdata_file(cr1_filename, read=True)
-    project_name_tag = Tag(0x0013, 0x1010)  # Replace with actual group and element
+    project_name_tag = Tag(0x0013, 0x1010)  
     if project_name_tag in cr1:
         del cr1[project_name_tag]
+    with pytest.raises(KeyError):
+        assert not cr1[project_name_tag]
+    
+    # run anonymizer
     test_filename = "test.dcm"
     test_dcm_file_path = Path(temp_dir, test_filename)
     cr1.save_as(test_dcm_file_path)
-
     error_msg, ds = controller.anonymizer.anonymize_file(test_dcm_file_path)
     controller.anonymizer.stop()
 
-    assert ds[0x00131010] # check that project name exists now
+    # test if private tag "ProjectName" exists now
+    assert ds[0x00131010] 
 
+
+def test_always_tags_new_tag(temp_dir):
+    # create custom script and init anonymizer
+    script_path = Path(temp_dir) / "custom.script"
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(
+        """<script>
+<e en="T" t="00081030" n="StudyDescription">@always()@keep()</e>
+<e en="T" t="00080016" n="SOPClassUID">@hashuid</e>
+<e en="T" t="00080018" n="SOPInstanceUID">@hashuid</e>
+<e en="T" t="0020000D" n="StudyInstanceUID">@hashuid</e>
+<e en="T" t="0020000E" n="SeriesInstanceUID">@hashuid</e>
+</script>"""
+    )
+    model = ProjectModel(anonymizer_script_path=script_path, storage_dir=Path(temp_dir, LocalSCU.aet))
+    controller = ProjectController(model)
+
+    # remove tag "Study Description" if existing
+    cr1 : FileDataset= get_testdata_file(cr1_filename, read=True)
+    stud_desc_tag = Tag(0x0008, 0x1030)  
+    if stud_desc_tag in cr1:
+        del cr1[stud_desc_tag]
+    with pytest.raises(KeyError):
+        assert not cr1[stud_desc_tag]
+
+    # run anonymizer
+    test_filename = "test.dcm"
+    test_dcm_file_path = Path(temp_dir, test_filename)
+    cr1.save_as(test_dcm_file_path)
+    error_msg, ds = controller.anonymizer.anonymize_file(test_dcm_file_path)
+    controller.anonymizer.stop()
+
+    # test if tag "Study Description" exists now
+    assert ds[0x00081030] # check that study description exists now
 
 # TODO: Transcoding tests here
