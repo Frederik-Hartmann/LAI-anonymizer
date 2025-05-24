@@ -617,7 +617,7 @@ class AnonymizerController:
         # fallback return empty string
         return ""
 
-    def _add_always_tags(self, ds: Dataset) -> str | None:
+    def _add_always_tags(self, ds: Dataset) -> None:
         """
         Ensures all tags in `self.model._tag_always` are present in the dataset.
         Adds them with an appropriate empty value if missing or empty.
@@ -626,34 +626,32 @@ class AnonymizerController:
             ds (Dataset): The DICOM dataset.
 
         Returns:
-            str | None: Error message if any tag cannot be added, otherwise None.
+            None: Error message if any tag cannot be added, otherwise None.
         """
         for tag in self.model._tag_always:
             tag = Tag(tag)
-            if tag in ds:
+            if tag in ds: # skip existing tags
                 continue
             
-            if not tag.is_private:
+            if tag.is_private:
+                # create new private creator if not existent
+                creator_tag = Tag(tag.group, 0x0010)
+                creator_name = "Empty Element Creator for Anonymization"
+                if creator_tag not in ds:
+                    ds.add_new(creator_tag, "LO", creator_name)
+
+                # add private tag
+                private_block = ds.private_block(tag.group, creator_name, create=True)
+                logger.warning(f"Value representation search for private tags is not supported. Defaulting to long string for tag {tag}.")
+                private_block.add_new(tag.element & 0x00FF, "LO", "")
+            else:
                 try:
                     vr = dictionary_VR(tag)
                 except KeyError as key_error:
                     vr = "LO"  
-                    logger.warning(f"pydicom could not find value representation: {key_error} \
-                                    defaulting to long string.")
+                    logger.warning(f"pydicom could not find value representation: {key_error} Defaulting to long string.")
                 empty_value = self._empty_value_for_vr(vr)
                 ds.add_new(tag, vr, empty_value)
-            else:
-                logger.warning(f"Value representation search for private tags is not supported. Defaulting to long string for tag {tag}.")
-                creator_tag = Tag(tag.group, 0x0010)
-                creator_name = "Empty Element Creator for Anonymization"
-                if creator_tag not in ds:
-                    print("adding tag")
-                    ds.add_new(creator_tag, "LO", creator_name)
-                add_private_dict_entry(creator_name, tag, "LO", "ProjectName")
-                private_block = ds.private_block(tag.group, creator_name, create=True)
-                private_block.add_new(tag.element & 0x00FF, "LO", "This is some text")
-                ds.save_as("test.dcm")
-
         return None
 
 
