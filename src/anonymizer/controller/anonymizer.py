@@ -32,7 +32,6 @@ import torch
 from easyocr import Reader
 from pydicom import Dataset, Sequence, dcmread
 from pydicom.errors import InvalidDicomError
-from pydicom.datadict import dictionary_VR, add_private_dict_entry
 from pydicom.tag import Tag
 
 from anonymizer.controller.remove_pixel_phi import remove_pixel_phi
@@ -40,6 +39,8 @@ from anonymizer.model.anonymizer import AnonymizerModel
 from anonymizer.model.project import DICOMNode, ProjectModel
 from anonymizer.utils.storage import DICOM_FILE_SUFFIX
 from anonymizer.utils.translate import _
+from anonymizer.utils.value_representation import get_vr_and_empty_value, convert_to_compatible_vr
+
 
 logger = logging.getLogger(__name__)
 
@@ -335,6 +336,49 @@ class AnonymizerController:
 
     def save_model(self) -> bool:
         return self.model.save(self.model_filename)
+    
+    @staticmethod
+    def _parse_paramkey_from(operation: str) -> str | None:
+        """
+        Parses a string like '@param(@PROJECTNAME)' and extracts the parameter name
+        in lowercase (e.g. 'projectname').
+
+        Args:
+            operation (str): The operation string to parse.
+
+        Returns:
+            str | None: the parameter_key in lowercase or None if parsing fails.
+        """
+        match = re.fullmatch(r"@param\(@(\w+)\)", operation)
+        if not match:
+            return None
+        return match.group(1).lower()
+    
+    def _get_script_param(self, tag: str, operation: str) -> object:
+        """
+        Resolves and returns a parameter from a script operation (e.g., '@param(@KEY)').
+        Falls back to empty value if the parameter is missing or conversion fails.
+
+        Args:
+            tag (str): DICOM tag for which the value will be inserted.
+            operation (str): The operation string to resolve (e.g. '@param(@SITEID)').
+
+        Returns:
+            str: Resolved or empty value for tag's VR.
+        """
+        param_key = self._parse_paramkey_from(operation)
+        vr, empty_value = get_vr_and_empty_value(tag)
+        if not param_key:
+            logger.warning(f"Failed to parse param key from operation: {operation}")
+            return empty_value
+
+        value = self.model._script_params.get(param_key)
+        if value is None:
+            logger.warning(f"No script param found for key '{param_key}'")
+            return empty_value
+
+        converted_value = convert_to_compatible_vr(value, vr)
+        return converted_value
 
     def valid_date(self, date_str: str) -> bool:
         """
@@ -616,7 +660,7 @@ class AnonymizerController:
             _, anon_date = self._hash_date(data_element.value, dataset.get("PatientID", ""))
             dataset[tag].value = anon_date
         elif "@modifydate" in operation:
-            _, modified_date = self._modify_date(data_element.value)
+            _, modified_date = self._modify_date(data_element.value, operation)
             dataset[tag].value = modified_date
         elif "@hashtime" in operation:
             _, anon_time = self._hash_time(data_element.value, dataset.get("PatientID", ""))
@@ -636,52 +680,17 @@ class AnonymizerController:
             logger.debug(f"round_age: Age:{value} Width:{width}")
             dataset[tag].value = self._round_age(value, width)
             logger.debug(f"round_age: Result:{dataset[tag].value}")
-        elif "@param" in operation:
-            pass
+        elif "@param" in operation: 
+            dataset[tag].value = self._get_script_param(tag, operation)
 
-    
-    @staticmethod
-    def _empty_value_for_vr(vr: str) -> object:
-        """
-        Returns an appropriate empty value based on the Value Representation.
-
-        Args:
-            vr (str): DICOM Value Representation (e.g., 'LO', 'SQ').
-
-        Returns:
-            object: An appropriate empty value for that VR.
-
-        Notes:
-            - VR to datatype are taken from https://pydicom.github.io/pydicom/dev/guides/element_value_types.html (last access May 23rd 2025)
-            - if VR is unknown falls back to empty strings
-        """
-        text_vrs = {'AE', 'AS', 'CS', 'DA', 'DS', 'DT', 'IS', 'LO', 'LT', 'PN', 'SH', 'ST', 'TM', 'UC', 'UI', 'UR', 'UT'}
-        numeric_vrs = {'DS', 'IS', 'FL', 'FD', 'SL', 'SS', 'UL', 'US'}
-        binary_vrs = {'OB', 'OD', 'OF', 'OL', 'OV', 'OW', 'UN'}
-        sequence_vrs = {'SQ'}
-
-        if vr in text_vrs:
-            return ""
-        if vr in numeric_vrs:
-            return None
-        if vr in binary_vrs:
-            return b""
-        if vr in sequence_vrs:
-            return Sequence()
-
-        # fallback return empty string
-        return ""
 
     def _add_always_tags(self, ds: Dataset) -> None:
         """
-        Ensures all tags in `self.model._tag_always` are present in the dataset.
-        Adds them with an appropriate empty value if missing or empty.
+        Adds required tags from self.model._tag_always to the dataset if missing.
+        Uses VR-specific empty values. Handles both standard and private tags.
 
         Args:
-            ds (Dataset): The DICOM dataset.
-
-        Returns:
-            None: Error message if any tag cannot be added, otherwise None.
+            ds (Dataset): The DICOM dataset to update.
         """
         for tag in self.model._tag_always:
             tag = Tag(tag)
@@ -700,14 +709,8 @@ class AnonymizerController:
                 logger.warning(f"Value representation search for private tags is not supported. Defaulting to long string for tag {tag}.")
                 private_block.add_new(tag.element & 0x00FF, "LO", "")
             else:
-                try:
-                    vr = dictionary_VR(tag)
-                except KeyError as key_error:
-                    vr = "LO"  
-                    logger.warning(f"pydicom could not find value representation: {key_error} Defaulting to long string.")
-                empty_value = self._empty_value_for_vr(vr)
+                vr, empty_value = get_vr_and_empty_value(tag)
                 ds.add_new(tag, vr, empty_value)
-        return None
 
 
     def anonymize(self, source: DICOMNode | str, ds: Dataset) -> str | None:

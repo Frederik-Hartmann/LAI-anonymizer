@@ -148,6 +148,7 @@ class AnonymizerModel:
             _instances (int): The number of instances.
             _quarantined (int): The number of instances quarantined. [V2]
             _tag_always (list): A list of DICOM tags that should always be present according script (@always). Will be created if not present.
+            _script_params(dict): A dictionary of @params from the script file
         """
         self._version = AnonymizerModel.MODEL_VERSION
         self._site_id = site_id
@@ -164,6 +165,8 @@ class AnonymizerModel:
         self._phi_lookup: Dict[str, PHI] = {}
         self._tag_keep: Dict[str, str] = {}  # {dicom tag : anonymizer operation}
         self._tag_always: List[str] = []
+        self._script_params: Dict[str, str] = {}  # {param key (lowercase): value}
+
 
         self._patients = 0
         self._studies = 0
@@ -218,6 +221,12 @@ class AnonymizerModel:
         try:
             # Open and parse the XML script file
             root = ET.parse(script_path).getroot()
+
+            # Extract 'p' tags into _script_params dictionary
+            for p in root.findall("p"):
+                param_key = str(p.attrib.get("t")).lower()
+                param_value = str(p.text) if p.text is not None else ""
+                self._script_params[param_key] = param_value
 
             # Extract 'e' tags into _tag_keep dictionary
             # IGNORE "en" = "T" or "F" - Java UX checkbox
