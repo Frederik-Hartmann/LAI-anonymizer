@@ -138,6 +138,42 @@ def test_valid_time(controller):
     assert anon.valid_time("00 0000.000000") == False
     assert anon.valid_time("000000.000000 ") == True
 
+@pytest.mark.parametrize(
+    "date, operation, expected_days, expected_result",
+    [
+        # Normal expected cases
+        ("20220415", "2022,1,1", -104, "20220101"),
+        ("20220415", "this,*,1,1", -104, "20220101"),
+        ("20220415", "*,*,*,1", -14, "20220401"),
+        ("20220415", "2023,*,*", 365, "20230415"),
+
+        # Missing "this" elementname (implicitly assumes "this")
+        ("20220115", "*,1,1", -14, "20220101"),
+        ("20220115", "2023,*,1", 351, "20230101"),
+
+        # Invalid input date format
+        ("badinput", "2022,1,1", 0, "USE_DEFAULT"),
+
+        # Invalid values in operation
+        ("20220115", "foo,1,1", 0, "USE_DEFAULT"),
+        ("20220115", "2022,2,30", 0, "USE_DEFAULT"),
+
+        # Too few or too many operation arguments
+        ("20220115", "this,1", 0, "USE_DEFAULT"),
+        ("20220115", "1,1,1,1,1", 0, "USE_DEFAULT"),
+
+        # Empty operation
+        ("20220115", "", 0, "USE_DEFAULT"),
+    ]
+)
+def test_modify_date(controller, date, operation, expected_days, expected_result):
+    result = controller.anonymizer._modify_date(date, operation)
+    if expected_result == "USE_DEFAULT":
+        default_anon_date = controller.anonymizer.DEFAULT_ANON_DATE
+        assert result == (0, default_anon_date)
+    else:
+        assert result == (expected_days, expected_result)
+
 
 def test_valid_time_hash_patient_id_range(controller):
     anon = controller.anonymizer

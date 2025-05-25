@@ -383,6 +383,59 @@ class AnonymizerController:
         formatted_date = incremented_date.strftime("%Y%m%d")
 
         return days_to_increment, formatted_date
+    
+    def _modify_date(self, date: str, operation: str) -> Tuple[int, str]:
+        """
+        Modifies the year, month, and/or day of the input date based on the operation string.
+
+        The operation must follow the format:
+            "this,year,month,day" or simply "year,month,day".
+        Use an asterisk '*' in place of year, month, or day to retain the original component.
+
+        If the first parameter (element name) is missing, it defaults to 'this'.
+
+        Args:
+            date (str): Original date string in "YYYYMMDD" format.
+            operation (str): Modification directive (e.g., "*,2020,1,1", "2020,*,*,15").
+
+        Returns:
+            Tuple[int, str]: A tuple with:
+                - Number of days between original and modified date (can be negative, excludes end day),
+                - Modified date in "YYYYMMDD" format.
+            Returns (0, DEFAULT_ANON_DATE) if input is invalid.
+
+        Notes:
+            - the only supported element name is "this"
+        """
+        if not self.valid_date(date):
+            return 0, self.DEFAULT_ANON_DATE
+
+        try:
+            original_date = datetime.strptime(date, "%Y%m%d")
+            parts = [p.strip() for p in operation.split(',')]
+
+            # If the first parameter (element name) is missing, default to 'this'.
+            if len(parts) == 3:
+                parts = ["this"] + parts
+
+            if len(parts) != 4 or parts[0].lower() not in {"this", "*"}:
+                return 0, self.DEFAULT_ANON_DATE
+
+            year_str, month_str, day_str = parts[1:]
+
+            year = original_date.year if year_str == '*' else int(year_str)
+            month = original_date.month if month_str == '*' else int(month_str)
+            day = original_date.day if day_str == '*' else int(day_str)
+
+            modified_date = datetime(year, month, day) # includes validation of input
+            delta_days = (modified_date - original_date).days
+
+            return delta_days, modified_date.strftime("%Y%m%d")
+
+        except (ValueError, IndexError):
+            return 0, self.DEFAULT_ANON_DATE
+
+
 
 
     def _hash_time(self, time_str: str, patient_id: str) -> Tuple[float, str]:
@@ -562,6 +615,9 @@ class AnonymizerController:
         elif "@hashdate" in operation:
             _, anon_date = self._hash_date(data_element.value, dataset.get("PatientID", ""))
             dataset[tag].value = anon_date
+        elif "@modifydate" in operation:
+            _, modified_date = self._modify_date(data_element.value)
+            dataset[tag].value = modified_date
         elif "@hashtime" in operation:
             _, anon_time = self._hash_time(data_element.value, dataset.get("PatientID", ""))
             dataset[tag].value = anon_time
@@ -582,8 +638,7 @@ class AnonymizerController:
             logger.debug(f"round_age: Result:{dataset[tag].value}")
         elif "@param" in operation:
             pass
-        elif "@modifydate" in operation:
-            pass
+
     
     @staticmethod
     def _empty_value_for_vr(vr: str) -> object:
