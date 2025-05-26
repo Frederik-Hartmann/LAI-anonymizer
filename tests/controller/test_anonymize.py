@@ -174,6 +174,43 @@ def test_modify_date(controller, date, operation, expected_days, expected_result
     else:
         assert result == (expected_days, expected_result)
 
+@pytest.mark.parametrize(
+    "processed_operation, expected_result",
+    [
+        # Normal expected cases (date in file=20010101)
+        ("2022,11,14", "20221114"),
+        ("this,*,3,5", "20010305"),
+        ("*,*,*,5", "20010105"),
+        ("2023,*,*", "20230101"),
+    ]
+)
+def test_modify_date_in_script(temp_dir, processed_operation, expected_result):
+    # create custom script and init anonymizer
+    script_path = Path(temp_dir) / "custom.script"
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(
+        f"""<script>
+<e en="T" t="00080022" n="AcquisitionDate">@modifydate({processed_operation})</e>
+<e en="T" t="00080016" n="SOPClassUID">@hashuid</e>
+<e en="T" t="00080018" n="SOPInstanceUID">@hashuid</e>
+<e en="T" t="0020000D" n="StudyInstanceUID">@hashuid</e>
+<e en="T" t="0020000E" n="SeriesInstanceUID">@hashuid</e>
+</script>"""
+    )
+    model = ProjectModel(anonymizer_script_path=script_path, storage_dir=Path(temp_dir, LocalSCU.aet))
+    controller = ProjectController(model)
+
+    # run anonymizer
+    cr1 : FileDataset= get_testdata_file(cr1_filename, read=True)
+    print(cr1)
+    test_filename = "test.dcm" # AcquisitionDate = 20010101
+    test_dcm_file_path = Path(temp_dir, test_filename)
+    cr1.save_as(test_dcm_file_path)
+    error_msg, ds = controller.anonymizer.anonymize_file(test_dcm_file_path)
+    controller.anonymizer.stop()
+
+    # test if tag "AcquisitionDate" is modified
+    assert ds[0x00080022].value == expected_result
 
 def test_valid_time_hash_patient_id_range(controller):
     anon = controller.anonymizer
