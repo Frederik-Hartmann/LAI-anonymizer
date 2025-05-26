@@ -202,7 +202,6 @@ def test_modify_date_in_script(temp_dir, processed_operation, expected_result):
 
     # run anonymizer
     cr1 : FileDataset= get_testdata_file(cr1_filename, read=True)
-    print(cr1)
     test_filename = "test.dcm" # AcquisitionDate = 20010101
     test_dcm_file_path = Path(temp_dir, test_filename)
     cr1.save_as(test_dcm_file_path)
@@ -580,5 +579,82 @@ def test_always_tag_keep_tag_combination(temp_dir):
 
     # test if tag "Study Description" exists now
     assert ds[0x00081030].value == "XR C Spine Comp Min 4 Views" # check that study description is the same
+
+
+def test_always_tag_param_tag_combination(temp_dir):
+    # create custom script and init anonymizer
+    script_path = Path(temp_dir) / "custom.script"
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(
+        """<script>
+<p t="PROJECTNAME">Project</p>
+<e en="T" t="00081030" n="StudyDescription">@always()@param(@projectname)</e>
+<e en="T" t="00080016" n="SOPClassUID">@hashuid</e>
+<e en="T" t="00080018" n="SOPInstanceUID">@hashuid</e>
+<e en="T" t="0020000D" n="StudyInstanceUID">@hashuid</e>
+<e en="T" t="0020000E" n="SeriesInstanceUID">@hashuid</e>
+</script>"""
+    )
+    model = ProjectModel(anonymizer_script_path=script_path, storage_dir=Path(temp_dir, LocalSCU.aet))
+    controller = ProjectController(model)
+
+    # remove tag "Study Description" if existing
+    cr1 : FileDataset= get_testdata_file(cr1_filename, read=True)
+    stud_desc_tag = Tag(0x0008, 0x1030)  
+    if stud_desc_tag in cr1:
+        del cr1[stud_desc_tag]
+    with pytest.raises(KeyError):
+        assert not cr1[stud_desc_tag]
+
+    # run anonymizer
+    test_filename = "test.dcm"
+    test_dcm_file_path = Path(temp_dir, test_filename)
+    cr1.save_as(test_dcm_file_path)
+    error_msg, ds = controller.anonymizer.anonymize_file(test_dcm_file_path)
+    controller.anonymizer.stop()
+
+    # test if tag "Study Description" exists now and is changed to param
+    assert ds[0x00081030].value == "Project"
+
+def test_param_in_script(temp_dir):
+    # create custom script and init anonymizer
+    script_path = Path(temp_dir) / "custom.script"
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(
+        f"""<script>
+<p t="PROJECTNAME">Project</p>
+<p t="IntegerParam1">123</p>
+<p t="My_float_param">23</p>
+<e en="T" t="00081030" n="Study Description">@param(@PROJECTNAME)</e>
+<e en="T" t="00181404" n="Exposures on Plate">@param(@IntegerParam1)</e>
+<e en="T" t="00181041" n="Contrast/Bolus Volume">@param(@My_float_param)</e>
+<e en="T" t="00080016" n="SOPClassUID">@hashuid</e>
+<e en="T" t="00080018" n="SOPInstanceUID">@hashuid</e>
+<e en="T" t="0020000D" n="StudyInstanceUID">@hashuid</e>
+<e en="T" t="0020000E" n="SeriesInstanceUID">@hashuid</e>
+</script>"""
+    )
+    model = ProjectModel(anonymizer_script_path=script_path, storage_dir=Path(temp_dir, LocalSCU.aet))
+    controller = ProjectController(model)
+
+    # assert files are in dict (they should be all strings here)
+    assert controller.anonymizer.model._script_params["projectname"] == "Project"
+    assert controller.anonymizer.model._script_params["integerparam1"] == "123"
+    assert controller.anonymizer.model._script_params["my_float_param"] == "23"
+
+
+    # run anonymizer
+    cr1 : FileDataset= get_testdata_file(cr1_filename, read=True)
+    test_filename = "test.dcm" # AcquisitionDate = 20010101
+    test_dcm_file_path = Path(temp_dir, test_filename)
+    cr1.save_as(test_dcm_file_path)
+    error_msg, ds = controller.anonymizer.anonymize_file(test_dcm_file_path)
+    controller.anonymizer.stop()
+
+    # assert field values are replaced by param
+    assert ds[0x00081030].value == "Project"
+    assert ds[0x00181404].value == int(123)
+    assert ds[0x00181041].value == float(23)
+
 
 # TODO: Transcoding tests here
