@@ -303,6 +303,19 @@ class SettingsDialog(tk.Toplevel):
 
         row += 1
 
+        # pseudo key file button
+        self._pseudo_key_file_label = ctk.CTkLabel(self._frame, text=_("Anonymization Key File") + ":")
+        self._pseudo_key_file_label.grid(row=row, column=0, pady=(PAD, 0), padx=PAD, sticky="nw")
+        self._pseudo_key_file_button = ctk.CTkButton(
+                self._frame,
+                text="Select Pseudo Anonymization Key File",
+                command=self._pseudo_anon_key_dialog,
+                state=ctk.NORMAL,
+            )
+        self._pseudo_key_file_button.grid(row=row, column=1, padx=PAD, pady=(PAD, 0), sticky="nw")
+
+        row += 1
+
         btn_text = _("Create Project") if self.new_model else _("Update Project")
         self._create_project_button = ctk.CTkButton(self._frame, width=100, text=btn_text, command=self._create_project)
         self._create_project_button.grid(
@@ -434,6 +447,20 @@ class SettingsDialog(tk.Toplevel):
             self.model.anonymizer_script_path = Path(path)
             self._script_file_button.configure(text=path)
             logger.info(f"Anonymizer Script File updated: {self.model.anonymizer_script_path}")
+
+    def _pseudo_anon_key_dialog(self):
+        path = filedialog.askopenfilename(
+            parent=self,
+            defaultextension=".xlsx",
+            filetypes=[
+                (_("CSV or Excel Files"), "*.csv *.xlsx"),
+                (_("All Files"), "*.*"),
+            ],
+        )
+        if path:
+            self.model.psudeo_key_path = Path(path)
+            self._pseudo_key_file_button.configure(text=str(path))
+            logger.info(f"Pseudo Key File updated: {path}")
 
     def _set_logging_levels_dialog(self):
         dlg = LoggingLevelsDialog(self, self.model.logging_levels)

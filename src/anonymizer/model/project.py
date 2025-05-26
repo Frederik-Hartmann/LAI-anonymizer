@@ -183,6 +183,8 @@ class ProjectModel:
     aws_cognito: AWSCognito = field(default_factory=default_aws_cognito)
     network_timeouts: NetworkTimeouts = field(default_factory=default_timeouts)
     anonymizer_script_path: Path = field(default=Path("assets/scripts/default-anonymizer.script"), metadata=path_field)
+    psudeo_key_path: Path = field(default=Path(""), metadata=path_field)
+
 
     def __post_init__(self):
         # Sub-directories in the storage directory:
@@ -237,6 +239,9 @@ class ProjectModel:
 
     def abridged_script_path(self) -> str:
         return self.abridged_path(self.anonymizer_script_path, include_filename=True)
+    
+    def abridged_pseudo_key_path(self) -> str:
+        return self.abridged_path(self.psudeo_key_path, include_filename=True)
 
     def phi_export_dir(self) -> Path:
         return self.storage_dir.joinpath(self.PRIVATE_DIR, self.PHI_EXPORT_DIR)
