@@ -431,7 +431,7 @@ class AnonymizerController:
     def _modify_date(self, date: str, operation: str) -> Tuple[int, str]:
         """
         Modifies the year, month, and/or day of the input date based on the operation string.
-
+        Accepts both raw operation strings (e.g., "*,*,*,5") and wrapped format (e.g., "@modifydate(this,*,*,5)").
         The operation must follow the format:
             "this,year,month,day" or simply "year,month,day".
         Use an asterisk '*' in place of year, month, or day to retain the original component.
@@ -453,6 +453,11 @@ class AnonymizerController:
         """
         if not self.valid_date(date):
             return 0, self.DEFAULT_ANON_DATE
+        
+        # process operation
+        operation = operation.strip()
+        if operation.startswith("@modifydate(") and operation.endswith(")"):
+            operation = operation[len("@modifydate("):-1].strip()
 
         try:
             original_date = datetime.strptime(date, "%Y%m%d")
@@ -478,6 +483,7 @@ class AnonymizerController:
 
         except (ValueError, IndexError):
             return 0, self.DEFAULT_ANON_DATE
+
 
 
 
