@@ -25,6 +25,7 @@ from anonymizer.view.settings.dicom_node_dialog import DICOMNodeDialog
 from anonymizer.view.settings.logging_levels_dialog import LoggingLevelsDialog
 from anonymizer.view.settings.modalites_dialog import ModalitiesDialog
 from anonymizer.view.settings.network_timeouts_dialog import NetworkTimeoutsDialog
+from anonymizer.view.settings.pseudo_key_dialog import PseudoKeyConfirmationDialog
 from anonymizer.view.settings.sop_classes_dialog import SOPClassesDialog
 from anonymizer.view.settings.transfer_syntaxes_dialog import TransferSyntaxesDialog
 from anonymizer.view.ux_fields import str_entry
@@ -453,14 +454,26 @@ class SettingsDialog(tk.Toplevel):
             parent=self,
             defaultextension=".xlsx",
             filetypes=[
-                (_("CSV or Excel Files"), "*.csv *.xlsx"),
-                (_("All Files"), "*.*"),
+                ("CSV or Excel Files", "*.csv *.xlsx"),
+                ("All Files", "*.*"),
             ],
         )
-        if path:
-            self.model.psudeo_key_path = Path(path)
+
+        if not path:
+            return
+
+        def _on_confirm(path: Path):
+            self.model.psudeo_key_path = path
             self._pseudo_key_file_button.configure(text=str(path))
-            logger.info(f"Pseudo Key File updated: {path}")
+            logger.info(f"Pseudo Key File confirmed: {path}")
+
+        def _on_cancel():
+            self.model.psudeo_key_path = None
+            self._pseudo_key_file_button.configure(text="Select Pseudo Anonymization Key File")
+            logger.info("Pseudo Key File selection canceled by user")
+
+        PseudoKeyConfirmationDialog(self, Path(path), on_confirm=_on_confirm, on_cancel=_on_cancel)
+
 
     def _set_logging_levels_dialog(self):
         dlg = LoggingLevelsDialog(self, self.model.logging_levels)
