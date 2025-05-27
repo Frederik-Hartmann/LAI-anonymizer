@@ -25,7 +25,7 @@ from anonymizer.view.settings.dicom_node_dialog import DICOMNodeDialog
 from anonymizer.view.settings.logging_levels_dialog import LoggingLevelsDialog
 from anonymizer.view.settings.modalites_dialog import ModalitiesDialog
 from anonymizer.view.settings.network_timeouts_dialog import NetworkTimeoutsDialog
-from anonymizer.view.settings.pseudo_key_dialog import PseudoKeyConfirmationDialog
+from anonymizer.view.settings.pseudo_key_dialog import PseudoKeySection
 from anonymizer.view.settings.sop_classes_dialog import SOPClassesDialog
 from anonymizer.view.settings.transfer_syntaxes_dialog import TransferSyntaxesDialog
 from anonymizer.view.ux_fields import str_entry
@@ -304,18 +304,15 @@ class SettingsDialog(tk.Toplevel):
 
         row += 1
 
-        # pseudo key file button
-        self._pseudo_key_file_label = ctk.CTkLabel(self._frame, text=_("Anonymization Key File") + ":")
-        self._pseudo_key_file_label.grid(row=row, column=0, pady=(PAD, 0), padx=PAD, sticky="nw")
-        self._pseudo_key_file_button = ctk.CTkButton(
-                self._frame,
-                text="Select Pseudo Anonymization Key File",
-                command=self._pseudo_anon_key_dialog,
-                state=ctk.NORMAL,
-            )
-        self._pseudo_key_file_button.grid(row=row, column=1, padx=PAD, pady=(PAD, 0), sticky="nw")
+        # pseudo key enable switchself
+        pseudo_key_section = PseudoKeySection(
+            master=self,
+            frame=self._frame,
+            model=self.model,
+            row_start=row
+        )
 
-        row += 1
+        row += 2
 
         btn_text = _("Create Project") if self.new_model else _("Update Project")
         self._create_project_button = ctk.CTkButton(self._frame, width=100, text=btn_text, command=self._create_project)
@@ -448,32 +445,6 @@ class SettingsDialog(tk.Toplevel):
             self.model.anonymizer_script_path = Path(path)
             self._script_file_button.configure(text=path)
             logger.info(f"Anonymizer Script File updated: {self.model.anonymizer_script_path}")
-
-    def _pseudo_anon_key_dialog(self):
-        path = filedialog.askopenfilename(
-            parent=self,
-            defaultextension=".xlsx",
-            filetypes=[
-                ("CSV or Excel Files", "*.csv *.xlsx"),
-                ("All Files", "*.*"),
-            ],
-        )
-
-        if not path:
-            return
-
-        def _on_confirm(path: Path):
-            self.model.psudeo_key_path = path
-            self._pseudo_key_file_button.configure(text=str(path))
-            logger.info(f"Pseudo Key File confirmed: {path}")
-
-        def _on_cancel():
-            self.model.psudeo_key_path = None
-            self._pseudo_key_file_button.configure(text="Select Pseudo Anonymization Key File")
-            logger.info("Pseudo Key File selection canceled by user")
-
-        PseudoKeyConfirmationDialog(self, Path(path), on_confirm=_on_confirm, on_cancel=_on_cancel)
-
 
     def _set_logging_levels_dialog(self):
         dlg = LoggingLevelsDialog(self, self.model.logging_levels)

@@ -17,8 +17,8 @@ from typing import ClassVar, Dict, List, Tuple
 from bidict import OrderedBidict
 from pydicom import Dataset
 
-from anonymizer.model.project import DICOMNode
-from anonymizer.utils.storage import JavaAnonymizerExportedStudy
+from anonymizer.model.project import DICOMNode, PseudoKeyConfig
+from anonymizer.utils.storage import JavaAnonymizerExportedStudy, load_pseudo_keys
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ class AnonymizerModel:
 
     _lock = threading.Lock()
 
-    def __init__(self, site_id: str, uid_root: str, script_path: Path, pseudo_key_path: Path|None = None):
+    def __init__(self, site_id: str, uid_root: str, script_path: Path, pseudo_key_config: PseudoKeyConfig):
         """
         Initializes an instance of the AnonymizerModel class.
 
@@ -129,7 +129,7 @@ class AnonymizerModel:
             site_id (str): The site ID.
             uid_root (str): The UID root.
             script_path (Path): The path to the script.
-            pseudo_key_path(Path|None): The path to the pseudo anonymization key file (optional, default: None)
+            pseudo_key_config(PseudoKeyConfig): A data class containing if pseudo lookup is enabled and the path to the lookup file, default: (False, None)
 
         Attributes:
             _version (int): The model version.
@@ -155,7 +155,7 @@ class AnonymizerModel:
         self._site_id = site_id
         self._uid_root = uid_root
         self._script_path = script_path
-        self._pseudo_key_path = pseudo_key_path
+        self._pseudo_key_config = pseudo_key_config
 
         self._uid_prefix = f"{self._uid_root}.{self._site_id}"
         self.default_anon_pt_id: str = site_id + "-" + "".zfill(len(str(self.MAX_PATIENTS)) - 1)
@@ -165,6 +165,7 @@ class AnonymizerModel:
         self._uid_lookup: OrderedBidict[str, str] = OrderedBidict()
         self._acc_no_lookup: OrderedDict[str, str] = OrderedDict()
         self._phi_lookup: Dict[str, PHI] = {}
+        self._pseudo_key_lookup: Dict [str, str] # {phi patient id: anon patient id}
         self._tag_keep: Dict[str, str] = {}  # {dicom tag : anonymizer operation}
         self._tag_always: List[str] = []
         self._script_params: Dict[str, str] = {}  # {param key (lowercase): value}
@@ -178,7 +179,8 @@ class AnonymizerModel:
 
         self.clear_lookups()  # initialises default patient_id_lookup and phi_lookup
         self.load_script(script_path)
-        self.load_pseudo_keys(pseudo_key_path)
+        if self._pseudo_key_config.pseudo_key_lookup_enabled:
+            self._pseudo_key_lookup,_ = load_pseudo_keys(self._pseudo_key_config.pseudo_key_file_path)
 
     def save(self, filepath: Path) -> bool:
         with self._lock:
@@ -570,7 +572,15 @@ class AnonymizerModel:
             # If PHI PatientID is missing in dataset, as per DICOM Standard, pydicom should return "", handle missing attribute
             # Missing or blank corresponds to AnonymizerModel.DEFAULT_ANON_PATIENT_ID ("000000") initialised in AnonymizerModel.clear_lookups()
             phi_ptid = ds.PatientID.strip() if hasattr(ds, "PatientID") else ""
-            anon_patient_id: str | None = self._patient_id_lookup.get(phi_ptid, None)
+            anon_patient_id: str | None  = self._patient_id_lookup.get(phi_ptid, None)
+
+            # check if pseudo key mapping if enabled and key is found, fall back otherwise
+            pseudo_anon_patient_id: str | None = None
+            if self._pseudo_key_config.pseudo_key_lookup_enabled:
+                pseudo_anon_patient_id = self._pseudo_key_lookup.get(phi_ptid)
+
+
+
             next_uid_ndx = self.get_next_uid_ndx()
             anon_study_uid = self._uid_lookup.get(ds.StudyInstanceUID)
 
@@ -578,13 +588,17 @@ class AnonymizerModel:
                 # NEW Study:
                 if anon_patient_id is None:
                     # NEW patient
-                    # Get last patient_id in _patient_id_lookup
-                    last_pt_id = ""
-                    for key in self._patient_id_lookup.__reversed__():
-                        last_pt_id = self._patient_id_lookup[key]
-                        break
-                    # Get next sequential patient_id for the new patient: (this method handles deletions from _patient_id_lookup without recycling ids)
-                    new_anon_patient_id = self.next_ptid(last_pt_id)
+                    if pseudo_anon_patient_id: # from pseudo lookup
+                        new_anon_patient_id = pseudo_anon_patient_id
+                    else: # auto generate
+                        # Get last patient_id in _patient_id_lookup
+                        last_pt_id = ""
+                        for key in self._patient_id_lookup.__reversed__():
+                            last_pt_id = self._patient_id_lookup[key]
+                            break
+                        # Get next sequential patient_id for the new patient: (this method handles deletions from _patient_id_lookup without recycling ids)
+                        new_anon_patient_id = self.next_ptid(last_pt_id)
+                
                     phi = PHI(
                         patient_name=ds.get("PatientName"),
                         patient_id=phi_ptid,

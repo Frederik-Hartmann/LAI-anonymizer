@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 from logging import INFO, WARNING, getLevelName
 from pathlib import Path
 from pprint import pformat
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from dataclasses_json import config, dataclass_json
 from pynetdicom._globals import DEFAULT_TRANSFER_SYNTAXES
@@ -55,6 +55,16 @@ class LoggingLevels:
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}('anonymizer': {getLevelName(self.anonymizer)}, 'pynetdicom': {getLevelName(self.pynetdicom)}, 'pydicom': {self.pydicom}"
+
+@dataclass_json
+@dataclass
+class PseudoKeyConfig:
+    pseudo_key_lookup_enabled : bool
+    pseudo_key_file_path : Optional[Path] = field(default=None, metadata=config(encoder=str, decoder=Path))
+
+
+    def __repr__(self) -> str:
+        return f"Pseudo Key Lookup enabled: {self.pseudo_key_lookup_enabled}, Path to Keyfile: {self.pseudo_key_file_path}"
 
 
 @dataclass
@@ -161,6 +171,10 @@ class ProjectModel:
     @staticmethod
     def default_logging_levels() -> LoggingLevels:
         return LoggingLevels(INFO, WARNING, False)
+    
+    @staticmethod
+    def default_pseudo_key_config() -> PseudoKeyConfig:
+        return PseudoKeyConfig(False, None)
 
     # Custom encoder and decoder for Path objects
     path_field = config(encoder=str, decoder=Path)  # Encode Path as string, Decode string to Path
@@ -182,8 +196,8 @@ class ProjectModel:
     export_to_AWS: bool = False
     aws_cognito: AWSCognito = field(default_factory=default_aws_cognito)
     network_timeouts: NetworkTimeouts = field(default_factory=default_timeouts)
+    pseudo_key_config: PseudoKeyConfig= field(default_factory=default_pseudo_key_config)
     anonymizer_script_path: Path = field(default=Path("assets/scripts/default-anonymizer.script"), metadata=path_field)
-    psudeo_key_path: Path = field(default=Path(""), metadata=path_field)
 
 
     def __post_init__(self):
@@ -239,9 +253,6 @@ class ProjectModel:
 
     def abridged_script_path(self) -> str:
         return self.abridged_path(self.anonymizer_script_path, include_filename=True)
-    
-    def abridged_pseudo_key_path(self) -> str:
-        return self.abridged_path(self.psudeo_key_path, include_filename=True)
 
     def phi_export_dir(self) -> Path:
         return self.storage_dir.joinpath(self.PRIVATE_DIR, self.PHI_EXPORT_DIR)

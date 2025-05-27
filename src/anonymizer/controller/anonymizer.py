@@ -139,6 +139,7 @@ class AnonymizerController:
                     site_id=project_model.site_id,
                     uid_root=project_model.uid_root,
                     script_path=project_model.anonymizer_script_path,
+                    pseudo_key_config=project_model.pseudo_key_config
                 )  # new default model
                 # TODO: handle new & deleted fields in nested objects
                 self.model.__dict__.update(
@@ -156,6 +157,7 @@ class AnonymizerController:
                 project_model.site_id,
                 project_model.uid_root,
                 project_model.anonymizer_script_path,
+                pseudo_key_config=project_model.pseudo_key_config
             )
             logger.info(f"New Default Anonymizer Model initialised from script: {project_model.anonymizer_script_path}")
 
@@ -738,11 +740,12 @@ class AnonymizerController:
         """
         self._model_change_flag = True  # for autosave manager
 
-        # If pydicom logging is on, trace phi UIDs and store incoming phi file in private/source
-        if self.project_model.logging_levels.pydicom:
-            logger.debug(f"=>{ds.PatientID}/{ds.StudyInstanceUID}/{ds.SeriesInstanceUID}/{ds.SOPInstanceUID}")
+        # If pydicom logging is on, trace phi UIDs and store incoming phi file in private/source, also if pseudo key lookup is enabled
+        if self.project_model.logging_levels.pydicom or self.project_model.pseudo_key_config.pseudo_key_lookup_enabled: 
             filename = self.local_storage_path(self.project_model.private_dir(), ds)
-            logger.debug(f"SOURCE STORE: {source} => {filename}")
+            if self.project_model.logging_levels.pydicom:
+                logger.debug(f"=>{ds.PatientID}/{ds.StudyInstanceUID}/{ds.SeriesInstanceUID}/{ds.SOPInstanceUID}")
+                logger.debug(f"SOURCE STORE: {source} => {filename}")
             try:
                 ds.save_as(filename)
             except Exception as e:
