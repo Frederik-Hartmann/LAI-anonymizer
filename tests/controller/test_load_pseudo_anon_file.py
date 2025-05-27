@@ -1,9 +1,6 @@
 import csv
 import pytest
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from openpyxl import Workbook
-from typing import Optional
 
 from anonymizer.utils.storage import (
     load_pseudo_keys,
@@ -47,7 +44,7 @@ def test_read_csv_invalid_header(tmp_path):
         writer.writerow(["Name", "Code"])
         writer.writerow(["001", "anon1"])
 
-    with pytest.raises(ValueError, match="must contain headers"):
+    with pytest.raises(ValueError, match="must contain recognizable column names"):
         _read_pseudo_mapping_csv(file)
 
 
@@ -69,6 +66,28 @@ def test_read_csv_missing_data_row(tmp_path):
     result = _read_pseudo_mapping_csv(file)
     assert result == {}
 
+def test_csv_duplicate_original_id_raises(tmp_path):
+    file = tmp_path / "partial.csv"
+    with file.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Original Patient ID", "Anonymized Patient ID"])
+        writer.writerow(["123", "abc"])
+        writer.writerow(["123", "def"])
+
+    with pytest.raises(ValueError, match="Duplicate original patient ID found: '123'"):
+        _read_pseudo_mapping_csv(file)
+
+
+def test_csv_duplicate_anonymized_id_raises(tmp_path):
+    file = tmp_path / "partial.csv"
+    with file.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Original Patient ID", "Anonymized Patient ID"])
+        writer.writerow(["123", "abc"])
+        writer.writerow(["345", "abc"])
+
+    with pytest.raises(ValueError, match="Duplicate anonymized patient ID found: 'abc'"):
+        _read_pseudo_mapping_csv(file)
 
 # ------------------------------
 # XLSX Tests
@@ -107,7 +126,7 @@ def test_read_xlsx_invalid_header(tmp_path):
     ws.append(["123", "anon"])
     wb.save(file)
 
-    with pytest.raises(ValueError, match="must contain headers"):
+    with pytest.raises(ValueError, match="must contain recognizable column names"):
         _read_pseudo_mapping_xlsx(file)
 
 
@@ -130,6 +149,31 @@ def test_read_xlsx_row_missing_data(tmp_path):
 
     result = _read_pseudo_mapping_xlsx(file)
     assert result == {}
+
+
+def test_xlsx_duplicate_original_id_raises(tmp_path):
+    file = tmp_path / "rowmiss.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Original ID", "Anonymized ID"])
+    ws.append(["123", "abc"])
+    ws.append(["123", "xyz"])
+    wb.save(file)
+
+    with pytest.raises(ValueError, match="Duplicate original patient ID found: '123'"):
+        _read_pseudo_mapping_xlsx(file)
+
+
+def test_xlsx_duplicate_anonymized_id_raises(tmp_path):
+    file = tmp_path / "rowmiss.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Original ID", "Anonymized ID"])
+    ws.append(["123", "abc"])
+    ws.append(["456", "abc"])
+    wb.save(file)
+    with pytest.raises(ValueError, match="Duplicate anonymized patient ID found: 'abc'"):
+        _read_pseudo_mapping_xlsx(file)
 
 
 # ------------------------------
@@ -158,7 +202,7 @@ def test_load_pseudo_keys_csv(tmp_path):
         writer.writerow(["Original Patient ID", "Anonymized Patient ID"])
         writer.writerow(["x", "y"])
 
-    result = load_pseudo_keys(path)
+    result, messages = load_pseudo_keys(path)
     assert result == {"x": "y"}
 
 
@@ -170,27 +214,27 @@ def test_load_pseudo_keys_xlsx(tmp_path):
     ws.append(["a", "b"])
     wb.save(path)
 
-    result = load_pseudo_keys(path)
+    result, messages = load_pseudo_keys(path)
     assert result == {"a": "b"}
 
 
 def test_load_pseudo_keys_unsupported_format(tmp_path, caplog):
     file = tmp_path / "invalid.txt"
     file.write_text("Nonsense")
-    result = load_pseudo_keys(file)
+    result, messages = load_pseudo_keys(file)
     assert result == {}
     assert "Unsupported file format" in caplog.text
 
 
 def test_load_pseudo_keys_missing_file(tmp_path, caplog):
     missing = tmp_path / "doesnotexist.csv"
-    result = load_pseudo_keys(missing)
+    result, messages = load_pseudo_keys(missing)
     assert result == {}
     assert "not found" in caplog.text
 
 
 def test_load_pseudo_keys_none_path(caplog):
     caplog.set_level("INFO")
-    result = load_pseudo_keys(None)
+    result, messages = load_pseudo_keys(None)
     assert result == {}
     assert "No anonymization key file specified" in caplog.text

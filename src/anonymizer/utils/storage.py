@@ -259,7 +259,7 @@ def load_default_whitelist(modality_code: str) -> list[str]:
 
 
 
-def load_pseudo_keys(pseudo_key_path: Optional[Path]) -> dict[str, str]:
+def load_pseudo_keys(pseudo_key_path: Optional[Path]) -> tuple[dict[str, str], list[str]]:
     """
     Loads pseudo-anonymization keys from a .csv or .xlsx file.
 
@@ -267,32 +267,48 @@ def load_pseudo_keys(pseudo_key_path: Optional[Path]) -> dict[str, str]:
         pseudo_key_path (Optional[Path]): Path to the anonymization key file.
 
     Returns:
-        dict[str, str]: Mapping from original patient ID to anonymized ID.
+        tuple[dict[str, str], list[str]]: Mapping from original to anonymized IDs and a list of log messages.
     """
+    messages = []
+    mapping: dict[str, str] = {}
+
     if not pseudo_key_path:
-        logger.info("No anonymization key file specified, defaulting to automatic generation of anonymized patient IDs.")
-        return {}
+        msg = "No anonymization key file specified, defaulting to automatic generation of anonymized patient IDs."
+        logger.info(msg)
+        messages.append(msg)
+        return {}, messages
 
     if not pseudo_key_path.exists():
-        logger.warning(f"Pseudo Anonymization Key File not found: {pseudo_key_path}")
-        return {}
+        msg = f"Pseudo Anonymization Key File not found: {pseudo_key_path}"
+        logger.warning(msg)
+        messages.append(msg)
+        return {}, messages
 
     try:
         if pseudo_key_path.suffix.lower() == ".csv":
-            return _read_pseudo_mapping_csv(pseudo_key_path)
+            mapping = _read_pseudo_mapping_csv(pseudo_key_path)
         elif pseudo_key_path.suffix.lower() == ".xlsx":
-            return _read_pseudo_mapping_xlsx(pseudo_key_path)
+            mapping = _read_pseudo_mapping_xlsx(pseudo_key_path)
         else:
-            logger.warning(f"Unsupported file format: {pseudo_key_path.suffix}. Use '.csv' or '.xlsx'.")
+            msg = f"Unsupported file format: {pseudo_key_path.suffix}. Use '.csv' or '.xlsx'."
+            logger.warning(msg)
+            messages.append(msg)
     except ValueError as e:
-        logger.warning(str(e))
+        msg = str(e)
+        logger.warning(msg)
+        messages.append(msg)
     except Exception as e:
-        logger.exception(f"Unexpected error while loading pseudo key file: {pseudo_key_path}")
-    return {}
+        msg = f"Unexpected error while loading pseudo key file: {pseudo_key_path}\n{e}"
+        logger.exception(msg)
+        messages.append(msg)
+
+    return mapping, messages
+
 
 def _read_pseudo_mapping_csv(path: Path) -> dict[str, str]:
-    """Parses a CSV file containing patient ID mappings with required headers."""
-    mapping: dict[str, str] = {}
+    mapping = {}
+    seen_orig = set()
+    seen_anon = set()
 
     with path.open(newline="") as f:
         reader = csv.reader(f)
@@ -303,7 +319,7 @@ def _read_pseudo_mapping_csv(path: Path) -> dict[str, str]:
 
         indices = _detect_header_indices(header)
         if indices is None:
-            raise ValueError(f"CSV file '{path}' must contain headers for original and anonymized patient IDs.")
+            raise ValueError("CSV file must contain recognizable column names for original and anonymized patient IDs. For example 'original patient id' and 'anonymous patient id'")
 
         orig_idx, anon_idx = indices
 
@@ -312,14 +328,23 @@ def _read_pseudo_mapping_csv(path: Path) -> dict[str, str]:
                 continue
             orig = row[orig_idx].strip()
             anon = row[anon_idx].strip()
+
+            if orig in seen_orig:
+                raise ValueError(f"Duplicate original patient ID found: '{orig}'. Key file can not contain duplicates.")
+            if anon in seen_anon:
+                raise ValueError(f"Duplicate anonymized patient ID found: '{anon}'. Key file can not contain duplicates.")
+
             if orig and anon:
                 mapping[orig] = anon
-
+                seen_orig.add(orig)
+                seen_anon.add(anon)
     return mapping
 
+
 def _read_pseudo_mapping_xlsx(path: Path) -> dict[str, str]:
-    """Parses an XLSX file containing patient ID mappings with required headers."""
-    mapping: dict[str, str] = {}
+    mapping = {}
+    seen_orig = set()
+    seen_anon = set()
 
     wb = load_workbook(path, read_only=True)
     ws = wb.active
@@ -328,40 +353,36 @@ def _read_pseudo_mapping_xlsx(path: Path) -> dict[str, str]:
     if not rows:
         raise ValueError(f"XLSX file '{path}' is empty.")
 
-    header = [str(cell).strip() if cell is not None else "" for cell in rows[0]]
+    header = [str(cell).strip() if cell else "" for cell in rows[0]]
     indices = _detect_header_indices(header)
-
     if indices is None:
-        raise ValueError(f"XLSX file '{path}' must contain headers for original and anonymized patient IDs.")
+            raise ValueError("XLSX file must contain recognizable column names for original and anonymized patient IDs. For example 'original patient id' and 'anonymous patient id'")
 
     orig_idx, anon_idx = indices
 
     for row in rows[1:]:
         if len(row) <= max(orig_idx, anon_idx):
             continue
-        orig = str(row[orig_idx]).strip() if row[orig_idx] is not None else ""
-        anon = str(row[anon_idx]).strip() if row[anon_idx] is not None else ""
+        orig = str(row[orig_idx]).strip() if row[orig_idx] else ""
+        anon = str(row[anon_idx]).strip() if row[anon_idx] else ""
+
+        if orig in seen_orig:
+            raise ValueError(f"Duplicate original patient ID found: '{orig}'. Key file can not contain duplicates.")
+        if anon in seen_anon:
+            raise ValueError(f"Duplicate anonymized patient ID found: '{anon}'. Key file can not contain duplicates.")
+
         if orig and anon:
             mapping[orig] = anon
-
+            seen_orig.add(orig)
+            seen_anon.add(anon)
     return mapping
 
-def _detect_header_indices(header: list[str]) -> tuple[int, int] | None:
-    """
-    Detects indices of original and anonymized ID columns from header row.
 
-    Returns:
-        tuple[int, int] | None: Indices of (original ID, anonymized ID), or None if not found.
-    """
+def _detect_header_indices(header: list[str]) -> tuple[int, int] | None:
     lowered = [h.lower().strip() for h in header]
 
-    known_originals = {
-        "original", "original id", "original patient id", "id"
-    }
-    known_anons = {
-        "anon", "anonymous", "anonymized", "anonymous id", "anonymized id"
-        , "anonymous patient id", "anonymized patient id"
-    }
+    known_originals = {"original", "original id", "original patient id", "id"}
+    known_anons = {"anon", "anonymous", "anonymized", "anonymous id", "anonymized id", "anonymous patient id", "anonymized patient id"}
 
     original_index = next((i for i, col in enumerate(lowered) if col in known_originals), -1)
     anon_index = next((i for i, col in enumerate(lowered) if col in known_anons), -1)
@@ -370,5 +391,4 @@ def _detect_header_indices(header: list[str]) -> tuple[int, int] | None:
         return None
 
     return original_index, anon_index
-
 
