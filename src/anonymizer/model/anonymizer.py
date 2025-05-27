@@ -121,7 +121,7 @@ class AnonymizerModel:
 
     _lock = threading.Lock()
 
-    def __init__(self, site_id: str, uid_root: str, script_path: Path):
+    def __init__(self, site_id: str, uid_root: str, script_path: Path, pseudo_key_path: Path|None = None):
         """
         Initializes an instance of the AnonymizerModel class.
 
@@ -129,6 +129,7 @@ class AnonymizerModel:
             site_id (str): The site ID.
             uid_root (str): The UID root.
             script_path (Path): The path to the script.
+            pseudo_key_path(Path|None): The path to the pseudo anonymization key file (optional, default: None)
 
         Attributes:
             _version (int): The model version.
@@ -154,6 +155,7 @@ class AnonymizerModel:
         self._site_id = site_id
         self._uid_root = uid_root
         self._script_path = script_path
+        self._pseudo_key_path = pseudo_key_path
 
         self._uid_prefix = f"{self._uid_root}.{self._site_id}"
         self.default_anon_pt_id: str = site_id + "-" + "".zfill(len(str(self.MAX_PATIENTS)) - 1)
@@ -176,6 +178,7 @@ class AnonymizerModel:
 
         self.clear_lookups()  # initialises default patient_id_lookup and phi_lookup
         self.load_script(script_path)
+        self.load_pseudo_keys(pseudo_key_path)
 
     def save(self, filepath: Path) -> bool:
         with self._lock:
@@ -201,7 +204,7 @@ class AnonymizerModel:
             for key, value in (self.__dict__.items())
         }
         return f"{self.get_class_name()}\n({pformat(filtered_dict)})"
-
+    
     def load_script(self, script_path: Path):
         """
         Load and parse an anonymize script file.
