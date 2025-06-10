@@ -8,6 +8,7 @@ from pathlib import Path
 from queue import Queue
 from time import sleep
 
+import csv
 from pydicom import dcmread
 from pydicom.data import get_testdata_file
 from pydicom.dataset import Dataset, FileDataset
@@ -18,6 +19,7 @@ from anonymizer.controller.project import ProjectController, ProjectModel
 from tests.controller.dicom_test_files import (
     cr1_filename,
     ct_small_filename,
+    mr_brain_filename,
     # mr_small_filename,
     # mr_small_implicit_filename,
     # mr_small_bigendian_filename,
@@ -655,6 +657,81 @@ def test_param_in_script(temp_dir):
     assert ds[0x00081030].value == "Project"
     assert ds[0x00181404].value == int(123)
     assert ds[0x00181041].value == float(23)
+
+
+def test_pseudo_anon_initialized_at_projectstart(temp_dir: str):
+    #import test scans & get orig patient id
+    patient_id_tag = Tag(0x0010, 0x0020)
+
+    cr1 = get_testdata_file(cr1_filename, read=True)
+    test_dcm_file_path = Path(temp_dir, "test1.dcm")
+    orig_id_1 = str(cr1[patient_id_tag].value)
+    cr1.save_as(test_dcm_file_path)
+
+    mr_brain = get_testdata_file(mr_brain_filename, read=True)
+    test_dcm_file_path_2 = Path(temp_dir, "test2.dcm")
+    orig_id_2 = str(mr_brain[patient_id_tag].value)
+    mr_brain.save_as(test_dcm_file_path_2)
+
+    # create csv
+    pseudo_key_file = Path(temp_dir) / "partial.csv"
+    anon_id_1 = "MyNewID-1"
+    anon_id_2 = "MyNewID-2"
+    with pseudo_key_file.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Original Patient ID", "Anonymized Patient ID"])
+        writer.writerow([orig_id_1, anon_id_1])
+        writer.writerow([orig_id_2, anon_id_2])
+
+    # run anonymizer
+    model = ProjectModel(anonymizer_script_path=Path("src/anonymizer/assets/scripts/default-anonymizer.script"), storage_dir=Path(temp_dir, LocalSCU.aet))
+    model.pseudo_key_config.pseudo_key_lookup_enabled = True
+    model.pseudo_key_config.pseudo_key_file_path = pseudo_key_file
+    controller = ProjectController(model)
+
+
+    # test if PID is changed
+    error_msg, ds1 = controller.anonymizer.anonymize_file(test_dcm_file_path)
+    error_msg, ds2 = controller.anonymizer.anonymize_file(test_dcm_file_path_2)
+    controller.anonymizer.stop()
+    assert ds1[0x00100020].value == anon_id_1
+    assert ds2[0x00100020].value == anon_id_2
+
+def test_pseudo_anon_with_default_generation(temp_dir: str):
+    #import test scans & get orig patient id
+    patient_id_tag = Tag(0x0010, 0x0020)
+
+    cr1 = get_testdata_file(cr1_filename, read=True)
+    test_dcm_file_path = Path(temp_dir, "test1.dcm")
+    orig_id_1 = str(cr1[patient_id_tag].value)
+    cr1.save_as(test_dcm_file_path)
+
+    mr_brain = get_testdata_file(mr_brain_filename, read=True)
+    test_dcm_file_path_2 = Path(temp_dir, "test2.dcm")
+    orig_id_2 = str(mr_brain[patient_id_tag].value)
+    mr_brain.save_as(test_dcm_file_path_2)
+
+    # create csv
+    pseudo_key_file = Path(temp_dir) / "partial.csv"
+    anon_id_1 = "MyNewID-1"
+    with pseudo_key_file.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Original Patient ID", "Anonymized Patient ID"])
+        writer.writerow([orig_id_1, anon_id_1])
+
+    # run anonymizer
+    model = ProjectModel(anonymizer_script_path=Path("src/anonymizer/assets/scripts/default-anonymizer.script"), storage_dir=Path(temp_dir, LocalSCU.aet))
+    model.pseudo_key_config.pseudo_key_lookup_enabled = True
+    model.pseudo_key_config.pseudo_key_file_path = pseudo_key_file
+    controller = ProjectController(model)
+
+
+    # test if PID is changed
+    error_msg, ds1 = controller.anonymizer.anonymize_file(test_dcm_file_path)
+    error_msg, ds2 = controller.anonymizer.anonymize_file(test_dcm_file_path_2)
+    controller.anonymizer.stop()
+    assert ds1[0x00100020].value == anon_id_1
+    assert ds2[0x00100020].value == "MyNewID-000002"
 
 
 # TODO: Transcoding tests here
