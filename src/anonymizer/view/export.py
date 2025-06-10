@@ -21,6 +21,8 @@ from anonymizer.model.project import ProjectModel
 from anonymizer.utils.storage import count_studies_series_images
 from anonymizer.utils.translate import _
 from anonymizer.view.dashboard import Dashboard
+from anonymizer.view.settings.xnat_dialog import XnatPasswordDialog
+
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,7 @@ class ExportView(tk.Toplevel):
         _controller (ProjectController): The project controller.
         _project_model (ProjectModel): The project model.
         _export_to_AWS (bool): Flag indicating whether to export to AWS.
+        _export_to_XNAT (bool): Flag indicating whether to export to XNAT.
         _export_active (bool): Flag indicating whether an export is active.
         _patients_processed (int): The number of patients processed.
         _patients_to_process (int): The number of patients to process.
@@ -88,10 +91,13 @@ class ExportView(tk.Toplevel):
         self._controller = project_controller
         self._project_model: ProjectModel = project_controller.model
         self._export_to_AWS = self._project_model.export_to_AWS
-        if not self._export_to_AWS:
-            dest = self._project_model.remote_scps[_("EXPORT")].aet
-        else:
+        self._export_to_XNAT = self._project_model.export_to_XNAT
+        if self._export_to_AWS:
             dest = f"{self._project_model.aws_cognito.username}@AWS/{self._project_model.project_name}"
+        elif self._export_to_XNAT:
+            dest = f"{self._project_model.xnat_config.username}@XNAT/{self._project_model.xnat_config.project_name}"
+        else:
+            dest = self._project_model.remote_scps[_("EXPORT")].aet
 
         if title is None:
             title = _("Export") + " " + _("Studies")
@@ -434,7 +440,7 @@ class ExportView(tk.Toplevel):
 
         self._error_frame.grid_remove()
 
-        if not self._controller.model.export_to_AWS:
+        if not self._controller.model.export_to_AWS and not self._controller.model.export_to_XNAT:
             # Verify echo of export DICOM server
             # TODO: remove this echo test? Rely on connection error from c-send?
             if not self._controller.echo(_("EXPORT")):
@@ -463,6 +469,15 @@ class ExportView(tk.Toplevel):
                 parent=self,
             )
             return
+        elif self._controller.model.export_to_XNAT:
+            dlg = XnatPasswordDialog(self, self._controller)
+            xnat_password: str | None = dlg.get_input()
+            if xnat_password is None:
+                logger.info("Entering of XNAT password cancelled.")
+            else:
+                self._controller._xnat_password = xnat_password
+                logger.info("XNAT password entered.")
+
 
         self._disable_action_buttons()
         self._export_active = True
@@ -474,9 +489,15 @@ class ExportView(tk.Toplevel):
         ux_Q = Queue()
 
         # Export all selected patients using a background thread pool
+        if self._export_to_AWS:
+            dest_name = "AWS"
+        elif self._export_to_XNAT:
+            dest_name = "XNAT"
+        else:
+            dest_name = _("EXPORT")
         self._controller.export_patients_ex(
             ExportPatientsRequest(
-                "AWS" if self._export_to_AWS else _("EXPORT"),
+                dest_name,
                 self._patient_ids_to_export.copy(),
                 ux_Q,
             )

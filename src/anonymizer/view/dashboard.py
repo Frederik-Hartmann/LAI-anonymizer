@@ -240,6 +240,9 @@ class Dashboard(ctk.CTkFrame):
             self._timer = self.AWS_AUTH_TIMEOUT_SECONDS
             self.after(1000, self._wait_for_aws)
             self._status.configure(text=_("Waiting for AWS Authentication") + "...")
+        elif self._controller.model.export_to_XNAT:
+            pass # TODO: do an actual check here
+            self._export_callback()
         else:
             self._controller.echo_ex(EchoRequest(scp="EXPORT", ux_Q=self._export_ux_Q))
             self.after(

@@ -166,7 +166,7 @@ class ProjectModel:
     def default_xnat_config() -> XnatConfig:
         return XnatConfig(
             server_uri="https://xnat.health-ri.nl/",
-            project_name="sandbox",
+            project_name="",
             use_prearchive=True,
             username="",
         )
