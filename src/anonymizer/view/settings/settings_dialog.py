@@ -13,7 +13,7 @@ from typing import List, Tuple
 import customtkinter as ctk
 
 from anonymizer.controller.project import DICOMNode
-from anonymizer.model.project import AWSCognito, ProjectModel
+from anonymizer.model.project import AWSCognito, ProjectModel, XnatConfig
 from anonymizer.utils.logging import set_logging_levels
 from anonymizer.utils.storage import (
     JavaAnonymizerExportedStudy,
@@ -28,6 +28,8 @@ from anonymizer.view.settings.network_timeouts_dialog import NetworkTimeoutsDial
 from anonymizer.view.settings.pseudo_key_dialog import PseudoKeySection
 from anonymizer.view.settings.sop_classes_dialog import SOPClassesDialog
 from anonymizer.view.settings.transfer_syntaxes_dialog import TransferSyntaxesDialog
+from anonymizer.view.settings.xnat_dialog import XnatDialog
+
 from anonymizer.view.ux_fields import str_entry
 
 logger = logging.getLogger(__name__)
@@ -202,6 +204,19 @@ class SettingsDialog(tk.Toplevel):
             command=self._aws_cognito_click,
         )
         self._export_server_button.grid(row=row, column=1, padx=PAD, pady=(PAD, 0), sticky="w")
+
+        row += 1
+
+        xnat_servers_label = ctk.CTkLabel(self._frame, text=_("XNAT Server") + ":")
+        xnat_servers_label.grid(row=row, column=0, padx=PAD, pady=(PAD, 0), sticky="nw")
+
+        self._xnat_export_server_button = ctk.CTkButton(
+            self._frame,
+            width=100,
+            text=_("XNAT Configuration"),
+            command=self._xnat_click,
+        )
+        self._xnat_export_server_button.grid(row=row, column=1, padx=PAD, pady=(PAD, 0), sticky="w")
 
         row += 1
 
@@ -380,6 +395,15 @@ class SettingsDialog(tk.Toplevel):
             return
         self.model.export_to_AWS, self.model.aws_cognito = input
         logger.info(f"Export to AWS: {self.model.export_to_AWS}, Cognito: {self.model.aws_cognito}")
+
+    def _xnat_click(self, event=None):
+        dlg = XnatDialog(self, self.model.export_to_XNAT, self.model.xnat_config)
+        xnat_input: tuple[bool, XnatConfig] | None = dlg.get_input()
+        if xnat_input is None:
+            logger.info("Setting of XNAT configuration cancelled")
+            return
+        self.model.export_to_XNAT, self.model.xnat_config = xnat_input
+        logger.info(f"Export to XNAT: {self.model.export_to_XNAT}, Configuration: {self.model.xnat_config}")
 
     def _network_timeouts_click(self, event=None):
         dlg = NetworkTimeoutsDialog(self, self.model.network_timeouts)

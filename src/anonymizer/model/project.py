@@ -83,6 +83,16 @@ class AWSCognito:
         d_copy = copy(self)
         d_copy.password = len(self.password) * "*"
         return f"\nAWSCognito\n({pformat(asdict(d_copy), sort_dicts=False)})"
+    
+@dataclass
+class XnatConfig:
+    server_uri: str # uri of the server to connect to (including http:// or https://)
+    project_name: str
+    use_prearchive: bool
+    username: str
+
+    def __repr__(self) -> str:
+        return f"\XnatConfig\n({pformat(asdict(self), sort_dicts=False)})"
 
 
 @dataclass_json()
@@ -151,6 +161,15 @@ class ProjectModel:
             username="",
             password="",
         )
+    
+    @staticmethod
+    def default_xnat_config() -> XnatConfig:
+        return XnatConfig(
+            server_uri="https://xnat.health-ri.nl/",
+            project_name="sandbox",
+            use_prearchive=True,
+            username="",
+        )
 
     @staticmethod
     def default_storage_classes() -> List[str]:
@@ -195,6 +214,8 @@ class ProjectModel:
     remote_scps: Dict[str, DICOMNode] = field(default_factory=default_remote_scps)
     export_to_AWS: bool = False
     aws_cognito: AWSCognito = field(default_factory=default_aws_cognito)
+    export_to_XNAT: bool = False
+    xnat_config: XnatConfig = field(default_factory=default_xnat_config)
     network_timeouts: NetworkTimeouts = field(default_factory=default_timeouts)
     pseudo_key_config: PseudoKeyConfig= field(default_factory=default_pseudo_key_config)
     anonymizer_script_path: Path = field(default=Path("assets/scripts/default-anonymizer.script"), metadata=path_field)
