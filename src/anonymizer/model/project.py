@@ -91,7 +91,7 @@ class XnatConfig:
     username: str
 
     def __repr__(self) -> str:
-        return f"\XnatConfig\n({pformat(asdict(self), sort_dicts=False)})"
+        return f"\nXnatConfig\n({pformat(asdict(self), sort_dicts=False)})"
 
 
 @dataclass_json()
