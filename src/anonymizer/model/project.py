@@ -88,7 +88,6 @@ class AWSCognito:
 class XnatConfig:
     server_uri: str # uri of the server to connect to (including http:// or https://)
     project_name: str
-    use_prearchive: bool
     username: str
 
     def __repr__(self) -> str:
@@ -167,7 +166,6 @@ class ProjectModel:
         return XnatConfig(
             server_uri="https://xnat.health-ri.nl/",
             project_name="",
-            use_prearchive=True,
             username="",
         )
 

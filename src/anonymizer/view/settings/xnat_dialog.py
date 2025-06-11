@@ -120,23 +120,6 @@ class XnatDialog(tk.Toplevel):
 
         row += 1
 
-        use_prearchive_label = ctk.CTkLabel(self._frame, text=_("Use Prearchive") + ":")
-        use_prearchive_label.grid(row=row, column=0, padx=PAD, pady=(PAD, 0), sticky="nw")
-
-        self._use_prearchive_checkbox = ctk.CTkCheckBox(self._frame, text="")
-        if self.xnat_configuration.use_prearchive:
-            self._use_prearchive_checkbox.select()
-
-        self._use_prearchive_checkbox.grid(
-            row=row,
-            column=1,
-            padx=PAD,
-            pady=PAD,
-            sticky="w",
-        )
-
-        row += 1
-
         export_to_xnat_label = ctk.CTkLabel(self._frame, text=_("Export to XNAT") + ":")
         export_to_xnat_label.grid(row=row, column=0, padx=PAD, pady=(PAD, 0), sticky="nw")
 
@@ -171,7 +154,6 @@ class XnatDialog(tk.Toplevel):
             XnatConfig(
                 self.server_uri_var.get(),
                 self.project_name_var.get(),
-                self._use_prearchive_checkbox.get() == 1,
                 self.username_var.get(),
             ),
         )
