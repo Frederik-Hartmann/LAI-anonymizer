@@ -21,8 +21,6 @@ from anonymizer.model.project import ProjectModel
 from anonymizer.utils.storage import count_studies_series_images
 from anonymizer.utils.translate import _
 from anonymizer.view.dashboard import Dashboard
-from anonymizer.view.settings.xnat_dialog import XnatPasswordDialog
-
 
 logger = logging.getLogger(__name__)
 
@@ -469,15 +467,6 @@ class ExportView(tk.Toplevel):
                 parent=self,
             )
             return
-        elif self._controller.model.export_to_XNAT:
-            dlg = XnatPasswordDialog(self, self._controller)
-            xnat_password: str | None = dlg.get_input()
-            if xnat_password is None:
-                logger.info("Entering of XNAT password cancelled.")
-            else:
-                self._controller._xnat_password = xnat_password
-                logger.info("XNAT password entered.")
-
 
         self._disable_action_buttons()
         self._export_active = True

@@ -10,6 +10,7 @@ from anonymizer.controller.project import EchoRequest, EchoResponse, ProjectCont
 from anonymizer.model.anonymizer import Totals
 from anonymizer.utils.storage import count_studies_series_images
 from anonymizer.utils.translate import _
+from anonymizer.view.settings.xnat_dialog import XnatPasswordDialog
 
 logger = logging.getLogger(__name__)
 
@@ -241,8 +242,7 @@ class Dashboard(ctk.CTkFrame):
             self.after(1000, self._wait_for_aws)
             self._status.configure(text=_("Waiting for AWS Authentication") + "...")
         elif self._controller.model.export_to_XNAT:
-            pass # TODO: do an actual check here
-            self._export_callback()
+            self._handle_xnat_export()
         else:
             self._controller.echo_ex(EchoRequest(scp="EXPORT", ux_Q=self._export_ux_Q))
             self.after(
@@ -320,3 +320,59 @@ class Dashboard(ctk.CTkFrame):
         self._studies_label.configure(text=f"{self._studies}")
         self._series_label.configure(text=f"{self._series}")
         self._images_label.configure(text=f"{self._images}")
+
+    def _handle_xnat_export(self):
+        """
+        Handles the authentication and connectivity check for XNAT export.
+        Prompts the user for a password and attempts to establish a session.
+        Displays appropriate messages on success or failure.
+        """
+        # get password
+        dlg = XnatPasswordDialog(self, self._controller)
+        xnat_password: str | None = dlg.get_input()
+
+        if not xnat_password:
+            logger.info("Entering of XNAT password cancelled.")
+            messagebox.showerror(
+                title=_("Connection Error"),
+                message=_("In order to send to XNAT a password is required."),
+                parent=self,
+            )
+            self._status.configure(text=_("No XNAT password provided"))
+            self._send_button.configure(state="normal", text_color="red")
+            return
+        
+        # test connection to xnat
+        self._controller._xnat_password = xnat_password
+        logger.info("XNAT password entered.")
+
+        echo_response = self._controller.echo_xnat_session_check(
+            server_uri=self._controller.model.xnat_config.server_uri,
+            project_name=self._controller.model.xnat_config.project_name,
+            username=self._controller.model.xnat_config.username,
+            password=self._controller._xnat_password,
+            timeout=40,
+        )
+
+        if echo_response.success:
+            self._send_button.configure(state="normal", text_color="light green")
+            self._status.configure(text=_("Successfully logged in with ") +
+                                self._controller.model.xnat_config.username +
+                                _(" at ") +
+                                self._controller.model.xnat_config.server_uri)
+            self._export_callback()
+        else:
+            messagebox.showerror(
+                title=_("Connection Error"),
+                message=_("XNAT Authentication Failed:") +
+                        f"\n\n{echo_response.error}" +
+                        "\n\n" +
+                        _("Check Project Settings -> XNAT Server and ensure all parameters are correct and try re-entering your password."),
+                parent=self,
+            )
+            self._status.configure(text=_("Failed to log in with ") +
+                                self._controller.model.xnat_config.username +
+                                _(" at ") +
+                                self._controller.model.xnat_config.server_uri)
+            self._send_button.configure(state="normal", text_color="red")
+

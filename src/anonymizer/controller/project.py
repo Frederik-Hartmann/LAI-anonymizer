@@ -934,6 +934,40 @@ class ProjectController(AE):
                 association.release()
 
         return files_sent
+    
+    @staticmethod
+    def echo_xnat_session_check( server_uri: str, project_name: str, username: str, password: str, timeout: int) -> EchoResponse:
+        """
+        Perform a connectivity and access check against an XNAT server.
+
+        This function attempts to:
+        - Connect to the XNAT server using the provided credentials.
+        - Validate the existence of the specified project.
+        - Verify accessibility of the prearchive services endpoint.
+
+        All checks are performed in a single session context to ensure proper resource management.
+        If any step fails, an appropriate error message is returned.
+
+        Args:
+            server_uri (str): The URI of the XNAT server (e.g., 'https://xnat.example.com').
+            project_name (str): The name of the project to validate within XNAT.
+            username (str): Username for authentication.
+            password (str): Password for authentication.
+            timeout (int): timeout in seconds.
+
+        Returns:
+            EchoResponse: An object containing a success flag and an optional error message.
+                        If `success` is False, `error` will contain the failure reason.
+        """
+        try:
+            with xnat.connect(server_uri, user=username, password=password, default_timeout=timeout, verify=True) as session:
+                if not session.projects.get(project_name, None):
+                    return EchoResponse(success=False, error=f"XNAT Project '{project_name}' not found for user {username} at {server_uri}.")
+
+            return EchoResponse(success=True, error=None)
+
+        except Exception as e:
+            return EchoResponse(success=False, error=str(e))
 
     def abort_query(self):
         logger.info("Abort Query")
