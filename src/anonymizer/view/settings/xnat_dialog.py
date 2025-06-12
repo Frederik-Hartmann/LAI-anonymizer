@@ -175,7 +175,7 @@ class XnatDialog(tk.Toplevel):
     
 
 
-class XnatPasswordDialog(tk.Toplevel):
+class XnatCredentialsDialog(tk.Toplevel):
     """
     A dialog window for entering XNAT configuration.
 
@@ -204,7 +204,7 @@ class XnatPasswordDialog(tk.Toplevel):
         self.project_controller = project_controller
         self.title(_("XNAT Log-in"))
         self.resizable(False, False)
-        self._user_input: str | None = None
+        self._user_input: tuple[str | None, str | None] = (self.project_controller.model.xnat_config.username,None)
         self._create_widgets()
         self.wait_visibility()
         self.lift()
@@ -213,7 +213,7 @@ class XnatPasswordDialog(tk.Toplevel):
         self.bind("<Escape>", self._escape_keypress)
 
     @property
-    def user_input(self) -> str | None:
+    def user_input(self) -> tuple[str | None, str | None]:
         return self._user_input
 
     def _create_widgets(self):
@@ -231,6 +231,23 @@ class XnatPasswordDialog(tk.Toplevel):
 
         row = 0
 
+        self.username_var = str_entry(
+            view=self._frame,
+            label=_("XNAT Username") + ":",
+            initial_value=self.project_controller.model.xnat_config.username,
+            min_chars=3,
+            max_chars=64,
+            charset=string.ascii_letters + string.digits + " !#$%&()#*+-.,:;_^@?~|",
+            tooltipmsg=None,
+            row=row,
+            col=0,
+            pad=PAD,
+            sticky="nw",
+            password=False,
+        )
+
+        row +=1
+
         self.password_var = str_entry(
             view=self._frame,
             label=_("XNAT Password") + ":",
@@ -246,7 +263,7 @@ class XnatPasswordDialog(tk.Toplevel):
             password=True,
         )
 
-        self._ok_button = ctk.CTkButton(self._frame, width=100, text=_("Ok"), command=self._ok_event)
+        self._ok_button = ctk.CTkButton(self._frame, width=100, text=_("Log-in"), command=self._ok_event)
         self._ok_button.grid(
             row=row,
             column=1,
@@ -260,7 +277,7 @@ class XnatPasswordDialog(tk.Toplevel):
         self._ok_event()
 
     def _ok_event(self, event=None):
-        self._user_input = self.password_var.get()
+        self._user_input = (self.username_var.get(), self.password_var.get())
         self.grab_release()
         self.destroy()
 

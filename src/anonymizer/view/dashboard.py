@@ -10,7 +10,7 @@ from anonymizer.controller.project import EchoRequest, EchoResponse, ProjectCont
 from anonymizer.model.anonymizer import Totals
 from anonymizer.utils.storage import count_studies_series_images
 from anonymizer.utils.translate import _
-from anonymizer.view.settings.xnat_dialog import XnatPasswordDialog
+from anonymizer.view.settings.xnat_dialog import XnatCredentialsDialog
 
 logger = logging.getLogger(__name__)
 
@@ -327,11 +327,21 @@ class Dashboard(ctk.CTkFrame):
         Prompts the user for a password and attempts to establish a session.
         Displays appropriate messages on success or failure.
         """
-        # get password
-        dlg = XnatPasswordDialog(self, self._controller)
-        xnat_password: str | None = dlg.get_input()
+        # get credentials
+        dlg = XnatCredentialsDialog(self, self._controller)
+        xnat_username, xnat_password = dlg.get_input()
 
-        if not xnat_password:
+        if not xnat_username:
+            logger.info("Entering of XNAT username cancelled.")
+            messagebox.showerror(
+                title=_("Connection Error"),
+                message=_("In order to send to XNAT a username is required."),
+                parent=self,
+            )
+            self._status.configure(text=_("No XNAT username provided"))
+            self._send_button.configure(state="normal", text_color="red")
+            return
+        elif not xnat_password:
             logger.info("Entering of XNAT password cancelled.")
             messagebox.showerror(
                 title=_("Connection Error"),
@@ -342,9 +352,10 @@ class Dashboard(ctk.CTkFrame):
             self._send_button.configure(state="normal", text_color="red")
             return
         
-        # test connection to xnat
+        # test connection to 
+        self._controller.model.xnat_config.username = xnat_username
         self._controller._xnat_password = xnat_password
-        logger.info("XNAT password entered.")
+        logger.info("XNAT credentials entered.")
 
         echo_response = self._controller.echo_xnat_session_check(
             server_uri=self._controller.model.xnat_config.server_uri,
@@ -367,7 +378,7 @@ class Dashboard(ctk.CTkFrame):
                 message=_("XNAT Authentication Failed:") +
                         f"\n\n{echo_response.error}" +
                         "\n\n" +
-                        _("Check Project Settings -> XNAT Server and ensure all parameters are correct and try re-entering your password."),
+                        _("Check Project Settings -> XNAT Server and ensure all parameters are correct and try re-entering your username and password."),
                 parent=self,
             )
             self._status.configure(text=_("Failed to log in with ") +
