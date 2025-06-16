@@ -75,7 +75,7 @@ class PseudoKeyDialog(tk.Toplevel):
 
         row += 1
         # Quarantine selection
-        self.quarantine_switch_var = tk.BooleanVar(value=self._initial_config.quarantine_on_lookup_error)
+        self.quarantine_switch_var = tk.BooleanVar(value=self._initial_config.quarantine_on_missing_id)
         self.quarantine_label = ctk.CTkLabel(
             self._frame,
             text=_("On missing ID:"),
@@ -183,7 +183,7 @@ class PseudoKeyDialog(tk.Toplevel):
     def _on_ok(self, event=None) -> None:
         self._user_input = PseudoKeyConfig(
             pseudo_key_lookup_enabled=self._enable_lookup_var.get(),
-            quarantine_on_lookup_error=self.quarantine_switch_var.get(),
+            quarantine_on_missing_id=self.quarantine_switch_var.get(),
             pseudo_key_file_path=self._selected_key_file_path
         )
         self.grab_release()

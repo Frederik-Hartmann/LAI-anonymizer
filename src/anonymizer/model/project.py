@@ -60,11 +60,11 @@ class LoggingLevels:
 @dataclass
 class PseudoKeyConfig:
     pseudo_key_lookup_enabled: bool
-    quarantine_on_lookup_error: bool
+    quarantine_on_missing_id: bool
     pseudo_key_file_path : Optional[Path] = field(default=None, metadata=config(encoder=str, decoder=Path))
 
     def __repr__(self) -> str:
-        return f"Pseudo Key Lookup enabled: {self.pseudo_key_lookup_enabled}, Path to Keyfile: {self.pseudo_key_file_path}, quarantine on lookup error: {self.quarantine_on_lookup_error}"
+        return f"Pseudo Key Lookup enabled: {self.pseudo_key_lookup_enabled}, Path to Keyfile: {self.pseudo_key_file_path}, quarantine on lookup error: {self.quarantine_on_missing_id}"
 
 
 @dataclass

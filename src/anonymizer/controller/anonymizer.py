@@ -486,10 +486,6 @@ class AnonymizerController:
         except (ValueError, IndexError):
             return 0, self.DEFAULT_ANON_DATE
 
-
-
-
-
     def _hash_time(self, time_str: str, patient_id: str) -> Tuple[float, str]:
         """
         Anonymize a DICOM conform time string by adding a patient-specific offset
@@ -591,8 +587,6 @@ class AnonymizerController:
             return False
 
         return True
-   
-
 
     def extract_first_digit(self, s: str) -> str | None:
         """

@@ -577,9 +577,17 @@ class AnonymizerModel:
             # check if pseudo key mapping if enabled and key is found, fall back otherwise
             pseudo_anon_patient_id: str | None = None
             if self._pseudo_key_config.pseudo_key_lookup_enabled:
-                pseudo_anon_patient_id = self._pseudo_key_lookup.get(phi_ptid)
-
-
+                pseudo_anon_patient_id = self._pseudo_key_lookup.get(phi_ptid, None)
+                if not pseudo_anon_patient_id and self._pseudo_key_config.quarantine_on_missing_id: # if false a anon_id will be auto generated (default).
+                    msg = f"Critical Error 5: No pseudo-anonymized patiend id found for subject in pseudo_key_lookup."
+                    logger.error(msg)
+                    raise LookupError(msg)
+                
+                # duplicate anon-ids 
+                if pseudo_anon_patient_id != anon_patient_id:
+                    msg = f"Critical Error 4: Two anonymized patient ids found for subject. The ids are {anon_patient_id} and {pseudo_anon_patient_id}"
+                    logger.error(msg)
+                    raise LookupError(msg)
 
             next_uid_ndx = self.get_next_uid_ndx()
             anon_study_uid = self._uid_lookup.get(ds.StudyInstanceUID)
@@ -588,7 +596,7 @@ class AnonymizerModel:
                 # NEW Study:
                 if anon_patient_id is None:
                     # NEW patient
-                    if pseudo_anon_patient_id: # from pseudo lookup
+                    if pseudo_anon_patient_id: # overwrite id with pseudo lookup
                         new_anon_patient_id = pseudo_anon_patient_id
                     else: # auto generate
                         # Get last patient_id in _patient_id_lookup
