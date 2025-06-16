@@ -13,7 +13,7 @@ from typing import List, Tuple
 import customtkinter as ctk
 
 from anonymizer.controller.project import DICOMNode
-from anonymizer.model.project import AWSCognito, ProjectModel, XnatConfig
+from anonymizer.model.project import AWSCognito, ProjectModel, XnatConfig, PseudoKeyConfig
 from anonymizer.utils.logging import set_logging_levels
 from anonymizer.utils.storage import (
     JavaAnonymizerExportedStudy,
@@ -25,7 +25,7 @@ from anonymizer.view.settings.dicom_node_dialog import DICOMNodeDialog
 from anonymizer.view.settings.logging_levels_dialog import LoggingLevelsDialog
 from anonymizer.view.settings.modalites_dialog import ModalitiesDialog
 from anonymizer.view.settings.network_timeouts_dialog import NetworkTimeoutsDialog
-from anonymizer.view.settings.pseudo_key_dialog import PseudoKeySection
+from anonymizer.view.settings.pseudo_key_dialog import PseudoKeyDialog
 from anonymizer.view.settings.sop_classes_dialog import SOPClassesDialog
 from anonymizer.view.settings.transfer_syntaxes_dialog import TransferSyntaxesDialog
 from anonymizer.view.settings.xnat_dialog import XnatDialog
@@ -319,15 +319,17 @@ class SettingsDialog(tk.Toplevel):
 
         row += 1
 
-        # pseudo key enable switchself
-        pseudo_key_section = PseudoKeySection(
-            master=self,
-            frame=self._frame,
-            model=self.model,
-            row_start=row
+        # pseudo key configuration
+        self._lookup_label = ctk.CTkLabel(self._frame, text=_("Key Lookup") + ":")
+        self._lookup_label.grid(row=row, column=0, pady=(PAD, 0), padx=PAD, sticky="nw")
+        self._lookup_button = ctk.CTkButton(
+            self._frame,
+            text=_("Set Lookup Configuration"),
+            command=self._key_lookup_klick,
         )
+        self._lookup_button.grid(row=row, column=1, pady=(PAD, 0), padx=PAD, sticky="nw")
 
-        row += 2
+        row += 1
 
         btn_text = _("Create Project") if self.new_model else _("Update Project")
         self._create_project_button = ctk.CTkButton(self._frame, width=100, text=btn_text, command=self._create_project)
@@ -479,6 +481,15 @@ class SettingsDialog(tk.Toplevel):
         self.model.logging_levels = levels
         logger.info(f"Logging Levels updated: {self.model.logging_levels}")
         set_logging_levels(levels)
+
+    def _key_lookup_klick(self):
+        dlg = PseudoKeyDialog(self, self.model.pseudo_key_config)
+        pseudo_input: PseudoKeyConfig | None = dlg.get_input()
+        if pseudo_input is None:
+            logger.info("Setting of pseudo key configuration cancelled")
+            return
+        self.model.pseudo_key_config = pseudo_input
+        logger.info(f"Pseudo Configuration changed: {self.model.pseudo_key_config}")
 
     def _initialise_project_from_java_index(self):
         path: str = filedialog.askopenfilename(

@@ -59,12 +59,12 @@ class LoggingLevels:
 @dataclass_json
 @dataclass
 class PseudoKeyConfig:
-    pseudo_key_lookup_enabled : bool
+    pseudo_key_lookup_enabled: bool
+    quarantine_on_lookup_error: bool
     pseudo_key_file_path : Optional[Path] = field(default=None, metadata=config(encoder=str, decoder=Path))
 
-
     def __repr__(self) -> str:
-        return f"Pseudo Key Lookup enabled: {self.pseudo_key_lookup_enabled}, Path to Keyfile: {self.pseudo_key_file_path}"
+        return f"Pseudo Key Lookup enabled: {self.pseudo_key_lookup_enabled}, Path to Keyfile: {self.pseudo_key_file_path}, quarantine on lookup error: {self.quarantine_on_lookup_error}"
 
 
 @dataclass
@@ -191,7 +191,7 @@ class ProjectModel:
     
     @staticmethod
     def default_pseudo_key_config() -> PseudoKeyConfig:
-        return PseudoKeyConfig(False, None)
+        return PseudoKeyConfig(False, False, None)
 
     # Custom encoder and decoder for Path objects
     path_field = config(encoder=str, decoder=Path)  # Encode Path as string, Decode string to Path
