@@ -207,6 +207,18 @@ class AnonymizerModel:
         }
         return f"{self.get_class_name()}\n({pformat(filtered_dict)})"
     
+
+    def __setstate__(self, state):
+        # overides the class state when unpickling
+        self.__dict__.update(state)
+        self._post_unpickle()
+
+    def _post_unpickle(self):
+        # function called upon unpickling
+        if self._pseudo_key_config.pseudo_key_lookup_enabled:
+            self._pseudo_key_lookup,_ = load_pseudo_keys(self._pseudo_key_config.pseudo_key_file_path)
+            logger.info(f"After unpickling the pseudo_key_lookup has been updated")
+    
     def load_script(self, script_path: Path):
         """
         Load and parse an anonymize script file.
@@ -579,12 +591,13 @@ class AnonymizerModel:
             if self._pseudo_key_config.pseudo_key_lookup_enabled:
                 pseudo_anon_patient_id = self._pseudo_key_lookup.get(phi_ptid, None)
                 if not pseudo_anon_patient_id and self._pseudo_key_config.quarantine_on_missing_id: # if false a anon_id will be auto generated (default).
-                    msg = f"Critical Error 5: No pseudo-anonymized patiend id found for subject in pseudo_key_lookup."
+                    msg = f"Critical Error 5: No pseudo-anonymized patiend id found for subject in pseudo_key_lookup. {self._pseudo_key_config}"
                     logger.error(msg)
                     raise LookupError(msg)
                 
                 # duplicate anon-ids 
-                if pseudo_anon_patient_id != anon_patient_id:
+                logger.info(f"The ids are {anon_patient_id} and {pseudo_anon_patient_id}")
+                if anon_patient_id is not None and pseudo_anon_patient_id != anon_patient_id:
                     msg = f"Critical Error 4: Two anonymized patient ids found for subject. The ids are {anon_patient_id} and {pseudo_anon_patient_id}"
                     logger.error(msg)
                     raise LookupError(msg)

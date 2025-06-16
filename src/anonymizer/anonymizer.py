@@ -949,6 +949,11 @@ class Anonymizer(ctk.CTk):
 
         self.controller.update_model(edited_model)
 
+        # for editing of psuedo lookup after project init
+        self.controller.anonymizer.model._pseudo_key_config = self.controller.model.pseudo_key_config
+        self.controller.anonymizer.model._post_unpickle()
+        self.controller.save_model()
+
         logger.info(f"{self.controller}")
 
     def help_filename_to_title(self, filename):
