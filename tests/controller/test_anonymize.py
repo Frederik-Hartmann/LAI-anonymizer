@@ -4,6 +4,7 @@
 import os
 import pytest
 from copy import deepcopy
+import logging
 from pathlib import Path
 from queue import Queue
 from time import sleep
@@ -23,9 +24,9 @@ from tests.controller.dicom_test_files import (
     # mr_small_filename,
     # mr_small_implicit_filename,
     # mr_small_bigendian_filename,
-    # CR_STUDY_3_SERIES_3_IMAGES,
+    CR_STUDY_3_SERIES_3_IMAGES,
     # CT_STUDY_1_SERIES_4_IMAGES,
-    # MR_STUDY_3_SERIES_11_IMAGES,
+    MR_STUDY_3_SERIES_11_IMAGES,
 )
 from tests.controller.dicom_test_nodes import LocalSCU
 
@@ -733,5 +734,117 @@ def test_pseudo_anon_with_default_generation(temp_dir: str):
     assert ds1[0x00100020].value == anon_id_1
     assert ds2[0x00100020].value == "MyNewID-000002"
 
+def test_pseudo_anon_name_change(temp_dir: str, caplog):
+    #import test scans & get orig patient id
+    patient_id_tag = Tag(0x0010, 0x0020)
+
+    cr1 = get_testdata_file(CR_STUDY_3_SERIES_3_IMAGES[0], read=True)
+    image1_subject1_file_path = Path(temp_dir, "image1_subject1.dcm")
+    orig_id_1 = str(cr1[patient_id_tag].value)
+    cr1.save_as(image1_subject1_file_path)
+
+    cr2 = get_testdata_file(CR_STUDY_3_SERIES_3_IMAGES[1], read=True)
+    image2_subject1_file_path = Path(temp_dir, "image2_subject1.dcm")
+    cr2.save_as(image2_subject1_file_path)
+
+    mr_brain = get_testdata_file(MR_STUDY_3_SERIES_11_IMAGES[0], read=True)
+    image1_subject2_file_path = Path(temp_dir, "image1_subject2.dcm")
+    orig_id_2 = str(mr_brain[patient_id_tag].value)
+    mr_brain.save_as(image1_subject2_file_path)
+
+    mr_brain_2 = get_testdata_file(MR_STUDY_3_SERIES_11_IMAGES[1], read=True)
+    image2_subject2_file_path = Path(temp_dir, "image2_subject2.dcm")
+    mr_brain_2.save_as(image2_subject2_file_path)
+
+    # create csv files
+    pseudo_key_file = Path(temp_dir) / "partial.csv"
+    anon_id_1 = "MyNewID-1"
+    anon_id_2 = "MyNewID-2"
+    with pseudo_key_file.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Original Patient ID", "Anonymized Patient ID"])
+        writer.writerow([orig_id_1, anon_id_1])
+        writer.writerow([orig_id_2, anon_id_2])
+        
+    
+    pseudo_key_file_2 = Path(temp_dir) / "partial_2.csv"
+    anon_id_3 = "MyNewID-3"
+    anon_id_4 = "MyNewID-4"
+    with pseudo_key_file_2.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Original Patient ID", "Anonymized Patient ID"])
+        writer.writerow([orig_id_1, anon_id_3])
+        writer.writerow([orig_id_2, anon_id_4])
+
+
+    # run anonymizer
+    model = ProjectModel(anonymizer_script_path=Path("src/anonymizer/assets/scripts/default-anonymizer.script"),storage_dir=Path(temp_dir, LocalSCU.aet))
+    model.pseudo_key_config.pseudo_key_lookup_enabled = True
+    model.pseudo_key_config.pseudo_key_file_path = pseudo_key_file
+    model.pseudo_key_config.quarantine_on_missing_id = False
+    controller = ProjectController(model)
+
+
+    # test if PID is changed (first values)
+    error_msg, ds1 = controller.anonymizer.anonymize_file(image1_subject1_file_path)
+    error_msg, ds2 = controller.anonymizer.anonymize_file(image1_subject2_file_path)
+
+    assert ds1[0x00100020].value == anon_id_1
+    assert ds2[0x00100020].value == anon_id_2
+
+    with caplog.at_level(logging.ERROR):
+        model.pseudo_key_config.pseudo_key_file_path = pseudo_key_file_2
+        controller.anonymizer.model._post_unpickle()
+        error_msg, ds3 = controller.anonymizer.anonymize_file(image2_subject1_file_path)
+        error_msg, ds4 = controller.anonymizer.anonymize_file(image2_subject2_file_path)
+        controller.anonymizer.stop()
+        assert "Two anonymized patient ids found" in [r.message for r in caplog.records if r.levelname == "ERROR"][-1]
+        assert ds1[0x00100020].value == anon_id_1 # should remain unchanged
+        assert ds2[0x00100020].value == anon_id_2
+
+def test_pseudo_anon_change_of_error_behaviour(temp_dir: str, caplog):
+    #import test scans & get orig patient id
+    patient_id_tag = Tag(0x0010, 0x0020)
+
+    cr1 = get_testdata_file(CR_STUDY_3_SERIES_3_IMAGES[0], read=True)
+    image1_subject1_file_path = Path(temp_dir, "image1_subject1.dcm")
+    orig_id_1 = str(cr1[patient_id_tag].value)
+    cr1.save_as(image1_subject1_file_path)
+
+    mr_brain = get_testdata_file(MR_STUDY_3_SERIES_11_IMAGES[0], read=True)
+    image1_subject2_file_path = Path(temp_dir, "image1_subject2.dcm")
+    orig_id_2 = str(mr_brain[patient_id_tag].value)
+    mr_brain.save_as(image1_subject2_file_path)
+
+
+    # create csv files
+    pseudo_key_file = Path(temp_dir) / "partial.csv"
+    anon_id_1 = "MyNewID-1"
+    anon_id_2 = "MyNewID-2"
+    with pseudo_key_file.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Original Patient ID", "Anonymized Patient ID"])
+
+
+    # run anonymizer
+    model = ProjectModel(anonymizer_script_path=Path("src/anonymizer/assets/scripts/default-anonymizer.script"),storage_dir=Path(temp_dir, LocalSCU.aet))
+    model.pseudo_key_config.pseudo_key_lookup_enabled = True
+    model.pseudo_key_config.pseudo_key_file_path = pseudo_key_file
+    model.pseudo_key_config.quarantine_on_missing_id = True
+    controller = ProjectController(model)
+
+
+    # test if quarantined (produces error log in caplog)
+    error_msg, ds1 = controller.anonymizer.anonymize_file(image1_subject1_file_path)
+
+    # change behaviour
+    model.pseudo_key_config.quarantine_on_missing_id = False
+    controller.anonymizer.model._post_unpickle()
+
+    # test if not quarantined
+    error_msg, ds1 = controller.anonymizer.anonymize_file(image1_subject1_file_path)
+    controller.anonymizer.stop()
+    assert "No pseudo-anonymized patiend id found" in [r.message for r in caplog.records if r.levelname == "ERROR"][-1]
+    assert ds1[0x00100020].value.strip().endswith("000001")
 
 # TODO: Transcoding tests here
