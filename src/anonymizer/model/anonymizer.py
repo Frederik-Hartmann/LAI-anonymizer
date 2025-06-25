@@ -596,7 +596,6 @@ class AnonymizerModel:
                     raise LookupError(msg)
                 
                 # duplicate anon-ids 
-                logger.info(f"The ids are {anon_patient_id} and {pseudo_anon_patient_id}")
                 if anon_patient_id is not None and pseudo_anon_patient_id != anon_patient_id:
                     msg = f"Critical Error 4: Two anonymized patient ids found for subject. The ids are {anon_patient_id} and {pseudo_anon_patient_id}"
                     logger.error(msg)
