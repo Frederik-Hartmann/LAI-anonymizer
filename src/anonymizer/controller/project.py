@@ -2362,15 +2362,18 @@ class ProjectController(AE):
                     files_sent += 1
                     ux_Q.put(ExportPatientsResponse(patient_id, files_sent, None, False))
             elif self.model.export_to_XNAT:
-                temp_zip = tempfile.NamedTemporaryFile(delete=True, suffix=".zip")
-                with zipfile.ZipFile(temp_zip, 'w', compression=zipfile.ZIP_DEFLATED) as zipf:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_zip:
+                    temp_zip_path = Path(temp_zip.name)
+
+                with zipfile.ZipFile(temp_zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zipf:
                     for instance_uid, file_path in export_instance_paths.items():
-                        # zip dicoms& store each file with its instance UID and .dcm extension at the ZIP root
                         arcname = f"{instance_uid}.dcm"
                         zipf.write(file_path, arcname=arcname)
-                    # connect to xnat & upload
-                    with xnat.connect(self.model.xnat_config.server_uri, user=self.model.xnat_config.username, password=self._xnat_password) as session:
-                        prearchive_session = session.services.import_(Path(temp_zip.name), project=self.model.xnat_config.project_name, destination="/prearchive", trigger_pipelines=False)
+
+                # Close the file for windows & upload to xnat
+                with xnat.connect(self.model.xnat_config.server_uri, user=self.model.xnat_config.username, password=self._xnat_password) as session:
+                    prearchive_session = session.services.import_(Path(temp_zip.name), project=self.model.xnat_config.project_name, destination="/prearchive", trigger_pipelines=False)
+
                 files_sent += len(export_instance_paths)
                 ux_Q.put(ExportPatientsResponse(patient_id, files_sent, None, False))
             else:  # DICOM Export:
