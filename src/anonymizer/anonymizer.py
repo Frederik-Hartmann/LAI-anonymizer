@@ -1259,6 +1259,7 @@ def _setup_shipped_projects(logs_dir: str) -> None:
         )
         if pseudo_key_path.exists():
             model["pseudo_key_file_path"] = str(project_dir / "private" / "keys.xlsx")
+            shutil.copy(pseudo_key_path, model["pseudo_key_file_path"])
 
         # Write modified project model to user directory
         project_dir.mkdir(parents=True, exist_ok=True)
