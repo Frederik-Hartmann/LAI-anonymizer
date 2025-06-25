@@ -65,6 +65,8 @@ class Dashboard(ctk.CTkFrame):
             size=self.DATA_FONT_SIZE,
             weight="normal",
         )
+        self.pack_propagate(True)
+        self.grid_propagate(True)
         self._mono_font = parent.mono_font
         self._last_qsize = 0
         self._latch_max_qsize = 1

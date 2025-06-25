@@ -89,7 +89,7 @@ class Anonymizer(ctk.CTk):
         self.index_view: IndexView | None = None
         self.help_views = {}
         self.dashboard: Dashboard | None = None
-        self.resizable(False, False)
+        self.resizable(True, True)
         self.title(self.get_title())
         self.menu_bar = self.create_project_closed_menu_bar()
         self.after(self.project_open_startup_dwell_time, self._open_project_startup)
@@ -493,6 +493,8 @@ class Anonymizer(ctk.CTk):
             view_callback=self.view,
             controller=self.controller,
         )
+
+        self.dashboard.pack(expand=True, fill="both")
 
         if not self.dashboard:
             logger.error("Critical Internal Error creating Dashboard")
