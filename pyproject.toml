@@ -31,6 +31,13 @@ click = "^8.1.8"
 dataclasses-json = "^0.6.7"
 bidict = "^0.23.1"
 xnat = "^0.7.2"
+torch = { version = "2.3.0", source = "torch" }  # CPU-only version
+torchvision = "0.18.0"  # Required for easyocr
+
+[[tool.poetry.source]]
+name = "torch"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "supplemental"
 
 [tool.poetry.group.dev.dependencies]
 poetry = "^2.0.1"
@@ -39,6 +46,8 @@ black = "*"
 pytest = "*"
 pytest-cov = "^6.0.0"
 python-dotenv = "*"
+pyinstaller-versionfile = "^3.0.1"
+pyinstaller = "^6.14.1"
 
 [tool.poetry.scripts]
 rsna-anonymizer = "anonymizer.anonymizer:main"

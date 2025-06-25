@@ -40,7 +40,8 @@ from anonymizer.view.query_retrieve_import import QueryView
 from anonymizer.view.settings.settings_dialog import SettingsDialog
 from anonymizer.view.welcome import WelcomeView
 
-faulthandler.enable()
+if sys.stderr is not None:
+    faulthandler.enable()
 
 logger = logging.getLogger()  # ROOT logger
 
@@ -1209,6 +1210,75 @@ def run_HEADLESS(project_model_path: Path):
     controller.anonymizer.stop()
 
 
+def _get_bundled_path(relative_path: str) -> Path:
+    """
+    Get the real path to a file bundled via PyInstaller.
+    During development, use relative paths. In bundle, use sys._MEIPASS.
+    """
+    try:
+        base_path = Path(sys._MEIPASS)  # type: ignore
+    except Exception:
+        base_path = Path(__file__).parent
+    return base_path / relative_path
+
+def _setup_shipped_projects(logs_dir: str) -> None:
+    """
+    Sets up pre-shipped anonymizer projects on first run.
+
+    If an anonymizer is shipped (e.g. as a standalone executable) with a preconfigured project,
+    this function installs that project to the user's documents folder.
+
+    Expected assets in `assets/projects_to_ship/`:
+        - ProjectModel.json (mandatory)
+        - private/keys.xlsx (optional)
+    """
+    app_state_path = Path(logs_dir) / ".anonymizer_state.json"
+    if app_state_path.exists():
+        return  # already set up
+    
+    logger.info("Setting up shipped project")
+    try:
+        template_path = _get_bundled_path("assets/project_to_ship/ProjectModel.json")
+        if not template_path.exists():
+            logger.warning(f"No shipped project template found at {template_path}", )
+            return
+
+        with open(template_path, "r", encoding="utf-8") as f:
+            model: dict = json.load(f)
+
+        base_dir = ProjectModel.base_dir()
+        project_name = model.get("project_name", "DefaultProject")
+        project_dir = base_dir / project_name
+
+        model["storage_dir"] = str(project_dir)
+
+        pseudo_key_path = (
+            _get_bundled_path("assets/project_to_ship/private/keys.xlsx")
+        )
+        if pseudo_key_path.exists():
+            model["pseudo_key_file_path"] = str(project_dir / "private" / "keys.xlsx")
+
+        # Write modified project model to user directory
+        project_dir.mkdir(parents=True, exist_ok=True)
+        project_file_path = project_dir / ProjectController.PROJECT_MODEL_FILENAME_JSON
+        with open(project_file_path, "w", encoding="utf-8") as project_file:
+            json.dump(model, project_file, indent=2)
+
+        # Create logs dir and write app state
+        app_state_path.parent.mkdir(parents=True, exist_ok=True)
+        config_data = {
+            "language": get_current_language(),
+            "recent_project_dirs": [str(project_dir)],
+            "current_open_project_dir": str(project_dir),
+        }
+        with open(app_state_path, "w", encoding="utf-8") as config_file:
+            json.dump(config_data, config_file, indent=2)
+
+        logger.info("Shipped project successfully set up at %s", project_dir)
+
+    except Exception as e:
+        logger.error("Failed to set up shipped project: %s", e, exc_info=True)
+
 @click.command()
 @click.option(
     "--config",
@@ -1231,6 +1301,8 @@ def main(config: Path | None = None):
     logger.info(f"tkinter TkVersion: {tk.TkVersion} TclVersion: {tk.TclVersion}")
     logger.info(f"Customtkinter Version: {ctk.__version__}")
     logger.info(f"pydicom Version: {pydicom_version}, pynetdicom Version: {pynetdicom_version}")
+
+    _setup_shipped_projects(logs_dir)
 
     if config:
         run_HEADLESS(config)
