@@ -94,7 +94,7 @@ class XnatDialog(tk.Toplevel):
             initial_value=self.xnat_configuration.project_name,
             min_chars=1,
             max_chars=64,
-            charset=string.digits + "-_" + string.ascii_lowercase,
+            charset=string.digits + "-_" + string.ascii_letters,
             tooltipmsg=None,
             row=row,
             col=0,
