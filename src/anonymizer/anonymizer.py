@@ -1258,7 +1258,9 @@ def _setup_shipped_projects(logs_dir: str) -> None:
             _get_bundled_path("assets/project_to_ship/private/keys.xlsx")
         )
         if pseudo_key_path.exists():
-            model["pseudo_key_file_path"] = str(project_dir / "private" / "keys.xlsx")
+            target_key_dir = project_dir / "private"
+            target_key_dir.mkdir(parents=True, exist_ok=True)
+            model["pseudo_key_file_path"] = str(target_key_dir / "keys.xlsx")
             shutil.copy(pseudo_key_path, model["pseudo_key_file_path"])
 
         # Write modified project model to user directory
